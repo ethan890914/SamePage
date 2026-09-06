@@ -1,0 +1,5 @@
+# Server-only Worker values. Copy this file to .dev.vars for local development.
+ROOM_PASSWORD_PEPPER=replace-for-local-development
+
+# Comma-separated browser origins. Defaults are added when origin checks land.
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173

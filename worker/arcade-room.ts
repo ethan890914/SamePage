@@ -1,0 +1,645 @@
+import { DurableObject } from 'cloudflare:workers';
+import {
+  PROTOCOL_VERSION,
+  parseClientMessage,
+  parseCreateRoomRequest,
+  type ClientMessage,
+  type JoinRejectedReason,
+  type ServerMessage,
+} from '../lib/protocol';
+import {
+  createPasswordVerifier,
+  hashSessionToken,
+  verifyPassword,
+} from './crypto';
+import type { Env } from './env';
+import { errorResponse, jsonResponse } from './http';
+import {
+  CREATOR_RESERVATION_MS,
+  DISCONNECT_GRACE_MS,
+  ROOM_STORAGE_KEY,
+  playerView,
+  type RoomPlayer,
+  type SocketAttachment,
+  type StoredRoom,
+} from './room-state';
+
+const MAX_MESSAGE_BYTES = 8 * 1024;
+const JOIN_ATTEMPT_LIMIT = 5;
+const JOIN_ATTEMPT_WINDOW_MS = 60_000;
+
+type InitializeRoomRequest = {
+  roomCode: string;
+  creator: unknown;
+};
+
+export class ArcadeRoom extends DurableObject<Env> {
+  override async alarm() {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+      if (!room) return;
+      const now = Date.now();
+      const expired = room.players.filter(
+        (player) =>
+          !player.connected &&
+          (player.reservedUntil === null || player.reservedUntil <= now),
+      );
+      const remaining = room.players.filter(
+        (player) =>
+          player.connected ||
+          (player.reservedUntil !== null && player.reservedUntil > now),
+      );
+      if (remaining.length !== room.players.length) {
+        room.players = remaining;
+        const exitedActivities = new Set(
+          expired.flatMap((player) =>
+            player.selectedActivity ? [player.selectedActivity] : [],
+          ),
+        );
+        for (const player of room.players) {
+          if (
+            player.selectedActivity &&
+            exitedActivities.has(player.selectedActivity)
+          )
+            player.ready = false;
+        }
+        if (room.players.length < 2) {
+          room.activeActivity = null;
+          room.activeActivityInstanceId = null;
+        }
+        room.revision += 1;
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        this.broadcastSnapshot(room);
+      }
+      await this.scheduleNextAlarm(room);
+    });
+  }
+
+  override async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (request.method === 'POST' && url.pathname === '/internal/initialize') {
+      return this.initialize(request);
+    }
+
+    if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+      return errorResponse(
+        426,
+        'websocket_required',
+        'Expected a WebSocket upgrade.',
+      );
+    }
+
+    const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+    if (!room)
+      return errorResponse(404, 'room_not_found', 'Arcade room not found.');
+
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    const attachment: SocketAttachment = {
+      connectionId: crypto.randomUUID(),
+      playerId: null,
+      authenticated: false,
+      clientKey: await hashSessionToken(
+        `ip:${request.headers.get('cf-connecting-ip') ?? request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'}`,
+        this.env.ROOM_PASSWORD_PEPPER,
+      ),
+    };
+    server.serializeAttachment(attachment);
+    this.ctx.acceptWebSocket(server, ['room-socket']);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  override async webSocketMessage(
+    ws: WebSocket,
+    message: string | ArrayBuffer,
+  ) {
+    if (
+      typeof message !== 'string' ||
+      new TextEncoder().encode(message).byteLength > MAX_MESSAGE_BYTES
+    ) {
+      this.sendProtocolError(
+        ws,
+        'invalid_message',
+        'Messages must be UTF-8 JSON under 8 KiB.',
+      );
+      ws.close(1009, 'Invalid message');
+      return;
+    }
+
+    const parsed = parseClientMessage(message);
+    if (!parsed.success) {
+      this.sendProtocolError(
+        ws,
+        parsed.error,
+        'The message does not match protocol version 1.',
+      );
+      return;
+    }
+
+    const attachment = this.getAttachment(ws);
+    if (!attachment?.authenticated) {
+      if (
+        parsed.data.type !== 'join_room' &&
+        parsed.data.type !== 'reconnect'
+      ) {
+        this.sendProtocolError(
+          ws,
+          'invalid_message',
+          'Authenticate before sending room commands.',
+        );
+        return;
+      }
+      const authenticationMessage: Extract<
+        ClientMessage,
+        { type: 'join_room' | 'reconnect' }
+      > = parsed.data;
+      await this.ctx.blockConcurrencyWhile(() =>
+        this.authenticate(ws, attachment, authenticationMessage),
+      );
+      return;
+    }
+
+    if (parsed.data.type === 'heartbeat') {
+      this.send(ws, {
+        type: 'heartbeat_ack',
+        protocolVersion: PROTOCOL_VERSION,
+        serverTime: Date.now(),
+      });
+      return;
+    }
+
+    if (parsed.data.type === 'leave_room') {
+      await this.leaveRoom(ws, attachment);
+      return;
+    }
+
+    if (
+      parsed.data.type === 'select_activity' ||
+      parsed.data.type === 'set_ready' ||
+      parsed.data.type === 'exit_activity'
+    ) {
+      await this.handleActivityCommand(ws, attachment, parsed.data);
+      return;
+    }
+
+    this.sendProtocolError(
+      ws,
+      'unsupported_message',
+      'This room command is not enabled yet.',
+    );
+  }
+
+  override async webSocketClose(ws: WebSocket, code: number, reason: string) {
+    await this.markDisconnected(ws);
+    try {
+      ws.close(code, reason);
+    } catch {
+      // The peer may have already completed the closing handshake.
+    }
+  }
+
+  override async webSocketError(ws: WebSocket) {
+    await this.markDisconnected(ws);
+  }
+
+  private async initialize(request: Request) {
+    let body: InitializeRoomRequest;
+    try {
+      body = (await request.json()) as InitializeRoomRequest;
+    } catch {
+      return errorResponse(
+        400,
+        'invalid_json',
+        'Expected a JSON room creation request.',
+      );
+    }
+
+    const creator = parseCreateRoomRequest(body?.creator);
+    if (!creator.success || typeof body.roomCode !== 'string') {
+      return errorResponse(
+        400,
+        creator.success ? 'invalid_message' : creator.error,
+        'Invalid room creation request.',
+      );
+    }
+
+    return this.ctx.blockConcurrencyWhile(async () => {
+      const existing = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+      const sessionTokenHash = await hashSessionToken(
+        creator.data.sessionToken,
+        this.env.ROOM_PASSWORD_PEPPER,
+      );
+
+      if (existing) {
+        const sameCreator =
+          existing.creationRequestId === creator.data.requestId &&
+          existing.players[0]?.sessionTokenHash === sessionTokenHash;
+        return sameCreator
+          ? jsonResponse({
+              protocolVersion: PROTOCOL_VERSION,
+              roomCode: existing.roomCode,
+              selfId: existing.players[0].id,
+            })
+          : errorResponse(
+              409,
+              'room_code_collision',
+              'Generated room code is already in use.',
+            );
+      }
+
+      const now = Date.now();
+      const password = await createPasswordVerifier(
+        creator.data.password,
+        this.env.ROOM_PASSWORD_PEPPER,
+      );
+      const player: RoomPlayer = {
+        id: crypto.randomUUID(),
+        name: creator.data.name,
+        sessionTokenHash,
+        connected: false,
+        activeConnectionId: null,
+        lastSeenAt: now,
+        reservedUntil: now + CREATOR_RESERVATION_MS,
+        selectedActivity: null,
+        ready: false,
+      };
+      const room: StoredRoom = {
+        schemaVersion: 1,
+        creationRequestId: creator.data.requestId,
+        roomCode: body.roomCode,
+        passwordSalt: password.salt,
+        passwordHash: password.hash,
+        createdAt: now,
+        revision: 1,
+        activeActivity: null,
+        activeActivityInstanceId: null,
+        failedJoinAttempts: {},
+        players: [player],
+      };
+      await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+      await this.scheduleNextAlarm(room);
+      return jsonResponse(
+        {
+          protocolVersion: PROTOCOL_VERSION,
+          roomCode: room.roomCode,
+          selfId: player.id,
+        },
+        { status: 201 },
+      );
+    });
+  }
+
+  private async authenticate(
+    ws: WebSocket,
+    attachment: SocketAttachment | null,
+    message: Extract<ClientMessage, { type: 'join_room' | 'reconnect' }>,
+  ) {
+    if (!attachment) {
+      this.sendProtocolError(
+        ws,
+        'invalid_message',
+        'Socket metadata is unavailable.',
+      );
+      ws.close(1011, 'Socket metadata unavailable');
+      return;
+    }
+
+    const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+    if (!room) return this.reject(ws, message.requestId, 'room_not_found');
+    room.failedJoinAttempts ??= {};
+    const attemptExpiry = Date.now() - JOIN_ATTEMPT_WINDOW_MS;
+    for (const [key, attempt] of Object.entries(room.failedJoinAttempts)) {
+      if (attempt.windowStartedAt < attemptExpiry)
+        delete room.failedJoinAttempts[key];
+    }
+
+    if (message.type === 'join_room') {
+      const attempt = room.failedJoinAttempts[attachment.clientKey];
+      const now = Date.now();
+      if (
+        attempt &&
+        now - attempt.windowStartedAt < JOIN_ATTEMPT_WINDOW_MS &&
+        attempt.count >= JOIN_ATTEMPT_LIMIT
+      ) {
+        return this.reject(ws, message.requestId, 'rate_limited');
+      }
+      const passwordMatches = await verifyPassword(
+        message.password,
+        this.env.ROOM_PASSWORD_PEPPER,
+        room.passwordSalt,
+        room.passwordHash,
+      );
+      if (!passwordMatches) {
+        room.failedJoinAttempts[attachment.clientKey] =
+          !attempt || now - attempt.windowStartedAt >= JOIN_ATTEMPT_WINDOW_MS
+            ? { windowStartedAt: now, count: 1 }
+            : { ...attempt, count: attempt.count + 1 };
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        return this.reject(ws, message.requestId, 'bad_password');
+      }
+      delete room.failedJoinAttempts[attachment.clientKey];
+    }
+
+    const tokenHash = await hashSessionToken(
+      message.sessionToken,
+      this.env.ROOM_PASSWORD_PEPPER,
+    );
+    const now = Date.now();
+    room.players = room.players.filter(
+      (player) =>
+        player.connected ||
+        (player.reservedUntil !== null && player.reservedUntil > now),
+    );
+    let player = room.players.find(
+      (candidate) => candidate.sessionTokenHash === tokenHash,
+    );
+
+    if (!player && message.type === 'reconnect') {
+      return this.reject(ws, message.requestId, 'session_expired');
+    }
+    if (!player && room.players.length >= 2) {
+      return this.reject(ws, message.requestId, 'room_full');
+    }
+    if (!player) {
+      if (message.type !== 'join_room') {
+        return this.reject(ws, message.requestId, 'session_expired');
+      }
+      player = {
+        id: crypto.randomUUID(),
+        name: message.name,
+        sessionTokenHash: tokenHash,
+        connected: false,
+        activeConnectionId: null,
+        lastSeenAt: now,
+        reservedUntil: null,
+        selectedActivity: null,
+        ready: false,
+      };
+      room.players.push(player);
+    }
+
+    const previousConnectionId = player.activeConnectionId;
+    player.connected = true;
+    player.activeConnectionId = attachment.connectionId;
+    player.lastSeenAt = now;
+    player.reservedUntil = null;
+    room.revision += 1;
+    attachment.authenticated = true;
+    attachment.playerId = player.id;
+    ws.serializeAttachment(attachment);
+    await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+    await this.scheduleNextAlarm(room);
+
+    if (
+      previousConnectionId &&
+      previousConnectionId !== attachment.connectionId
+    ) {
+      for (const candidate of this.ctx.getWebSockets()) {
+        const candidateAttachment = this.getAttachment(candidate);
+        if (candidateAttachment?.connectionId === previousConnectionId) {
+          candidate.close(4001, 'Connected from another tab');
+        }
+      }
+    }
+
+    this.send(ws, {
+      type:
+        message.type === 'reconnect' ? 'reconnect_accepted' : 'join_accepted',
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: now,
+      requestId: message.requestId,
+      roomCode: room.roomCode,
+      selfId: player.id,
+      revision: room.revision,
+      players: room.players.map(playerView),
+    });
+    this.broadcastSnapshot(room);
+  }
+
+  private async markDisconnected(ws: WebSocket) {
+    const attachment = this.getAttachment(ws);
+    if (!attachment?.authenticated || !attachment.playerId) return;
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+      const player = room?.players.find(
+        (candidate) => candidate.id === attachment.playerId,
+      );
+      if (
+        !room ||
+        !player ||
+        player.activeConnectionId !== attachment.connectionId
+      )
+        return;
+      player.connected = false;
+      player.activeConnectionId = null;
+      player.lastSeenAt = Date.now();
+      player.reservedUntil = player.lastSeenAt + DISCONNECT_GRACE_MS;
+      room.revision += 1;
+      await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+      await this.scheduleNextAlarm(room);
+      this.broadcastSnapshot(room);
+    });
+  }
+
+  private async leaveRoom(ws: WebSocket, attachment: SocketAttachment) {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+      if (!room || !attachment.playerId) return;
+      const player = room.players.find(
+        (candidate) => candidate.id === attachment.playerId,
+      );
+      if (!player || player.activeConnectionId !== attachment.connectionId)
+        return;
+      room.players = room.players.filter(
+        (candidate) => candidate.id !== player.id,
+      );
+      if (player.selectedActivity) {
+        for (const remaining of room.players) {
+          if (remaining.selectedActivity === player.selectedActivity)
+            remaining.ready = false;
+        }
+      }
+      if (room.players.length < 2) {
+        room.activeActivity = null;
+        room.activeActivityInstanceId = null;
+      }
+      room.revision += 1;
+      attachment.authenticated = false;
+      attachment.playerId = null;
+      ws.serializeAttachment(attachment);
+      await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+      await this.scheduleNextAlarm(room);
+      this.broadcastSnapshot(room);
+      ws.close(1000, 'Left room');
+    });
+  }
+
+  private async handleActivityCommand(
+    ws: WebSocket,
+    attachment: SocketAttachment,
+    command: Extract<
+      ClientMessage,
+      { type: 'select_activity' | 'set_ready' | 'exit_activity' }
+    >,
+  ) {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+      const player = room?.players.find(
+        (candidate) => candidate.id === attachment.playerId,
+      );
+      if (!room || !player) {
+        this.sendCommandRejected(ws, command.requestId, 'player_not_found');
+        return;
+      }
+      if (room.activeActivity) {
+        this.sendCommandRejected(
+          ws,
+          command.requestId,
+          'activity_already_started',
+        );
+        return;
+      }
+
+      if (command.type === 'select_activity') {
+        const previousActivity = player.selectedActivity;
+        if (previousActivity && previousActivity !== command.activityId) {
+          for (const candidate of room.players) {
+            if (candidate.selectedActivity === previousActivity)
+              candidate.ready = false;
+          }
+        }
+        player.selectedActivity = command.activityId;
+        player.ready = false;
+      } else if (command.type === 'set_ready') {
+        if (player.selectedActivity !== command.activityId) {
+          this.sendCommandRejected(ws, command.requestId, 'not_in_activity');
+          return;
+        }
+        player.ready = command.ready;
+      } else {
+        if (player.selectedActivity !== command.activityId) {
+          this.sendCommandRejected(ws, command.requestId, 'not_in_activity');
+          return;
+        }
+        for (const candidate of room.players) {
+          if (candidate.selectedActivity === command.activityId)
+            candidate.ready = false;
+        }
+        player.selectedActivity = null;
+      }
+
+      room.revision += 1;
+      const bothReady =
+        room.players.length === 2 &&
+        room.players.every(
+          (candidate) =>
+            candidate.connected &&
+            candidate.selectedActivity === command.activityId &&
+            candidate.ready,
+        );
+      let started = false;
+      if (bothReady) {
+        room.activeActivity = command.activityId;
+        room.activeActivityInstanceId = crypto.randomUUID();
+        started = true;
+      }
+      await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+      this.broadcastSnapshot(room);
+      if (started && room.activeActivityInstanceId) {
+        this.broadcast({
+          type: 'activity_started',
+          protocolVersion: PROTOCOL_VERSION,
+          serverTime: Date.now(),
+          activityId: command.activityId,
+          activityInstanceId: room.activeActivityInstanceId,
+          revision: room.revision,
+        });
+      }
+    });
+  }
+
+  private async scheduleNextAlarm(room: StoredRoom) {
+    const deadlines = room.players.flatMap((player) =>
+      !player.connected && player.reservedUntil !== null
+        ? [player.reservedUntil]
+        : [],
+    );
+    if (deadlines.length === 0) {
+      await this.ctx.storage.deleteAlarm();
+      return;
+    }
+    await this.ctx.storage.setAlarm(Math.min(...deadlines));
+  }
+
+  private reject(ws: WebSocket, requestId: string, reason: JoinRejectedReason) {
+    this.send(ws, {
+      type: 'join_rejected',
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: Date.now(),
+      requestId,
+      reason,
+    });
+    ws.close(1008, reason);
+  }
+
+  private broadcastSnapshot(room: StoredRoom) {
+    const message: ServerMessage = {
+      type: 'room_snapshot',
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: Date.now(),
+      roomCode: room.roomCode,
+      revision: room.revision,
+      players: room.players.map(playerView),
+      activeActivity: room.activeActivity,
+    };
+    this.broadcast(message);
+  }
+
+  private broadcast(message: ServerMessage) {
+    for (const socket of this.ctx.getWebSockets()) {
+      if (this.getAttachment(socket)?.authenticated) this.send(socket, message);
+    }
+  }
+
+  private sendCommandRejected(
+    ws: WebSocket,
+    requestId: string,
+    reason: Extract<ServerMessage, { type: 'command_rejected' }>['reason'],
+  ) {
+    this.send(ws, {
+      type: 'command_rejected',
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: Date.now(),
+      requestId,
+      reason,
+    });
+  }
+
+  private sendProtocolError(
+    ws: WebSocket,
+    code: Extract<ServerMessage, { type: 'protocol_error' }>['code'],
+    message: string,
+  ) {
+    this.send(ws, {
+      type: 'protocol_error',
+      protocolVersion: PROTOCOL_VERSION,
+      serverTime: Date.now(),
+      code,
+      message,
+    });
+  }
+
+  private send(ws: WebSocket, message: ServerMessage) {
+    try {
+      ws.send(JSON.stringify(message));
+    } catch {
+      // Disconnect/error callbacks reconcile persisted connection state.
+    }
+  }
+
+  private getAttachment(ws: WebSocket): SocketAttachment | null {
+    return (ws.deserializeAttachment() as SocketAttachment | null) ?? null;
+  }
+}

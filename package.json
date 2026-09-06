@@ -7,10 +7,13 @@
   },
   "scripts": {
     "dev": "vinext dev",
+    "dev:realtime": "WRANGLER_WRITE_LOGS=false WRANGLER_LOG_PATH=.wrangler/logs wrangler dev --config wrangler.realtime.jsonc",
     "build": "vinext build",
+    "build:realtime": "WRANGLER_WRITE_LOGS=false WRANGLER_LOG_PATH=.wrangler/logs wrangler deploy --config wrangler.realtime.jsonc --dry-run --outdir dist/realtime",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
+    "test:realtime": "node scripts/realtime-smoke.mjs",
     "format": "oxfmt"
   },
   "dependencies": {

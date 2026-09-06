@@ -246,11 +246,36 @@
   }
 
   .activity-card {
+    display: block;
+    width: 100%;
     min-width: 0;
+    text-align: left;
     border: 2px solid var(--border);
     background: #30275c;
     padding: clamp(0.6rem, 2vw, 1rem);
     box-shadow: 4px 4px 0 var(--pixel-shadow);
+    transition:
+      transform 80ms steps(2, end),
+      border-color 120ms,
+      box-shadow 80ms steps(2, end);
+  }
+  .activity-card:not(:disabled):hover,
+  .activity-card.is-selected {
+    border-color: currentColor;
+    transform: translateY(-2px);
+  }
+  .activity-card.is-selected {
+    box-shadow:
+      4px 4px 0 var(--pixel-shadow),
+      inset 0 0 0 2px currentColor;
+  }
+  .activity-card:focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 3px;
+  }
+  .activity-card:disabled {
+    cursor: default;
+    opacity: 0.72;
   }
   .activity-card h2 {
     margin-top: 0.7rem;
@@ -363,6 +388,51 @@
     box-shadow:
       inset 3px 3px 0 rgb(0 0 0 / 22%),
       0 0 0 2px rgb(97 230 223 / 16%);
+  }
+
+  .player-nameplate {
+    display: flex;
+    min-height: 4.25rem;
+    align-items: center;
+    gap: 0.75rem;
+    border: 2px solid var(--border);
+    background: linear-gradient(
+      90deg,
+      rgb(36 30 74 / 88%),
+      rgb(58 50 107 / 66%)
+    );
+    padding: 0.65rem 0.75rem;
+    box-shadow: inset 3px 0 0 rgb(97 230 223 / 20%);
+  }
+  .player-avatar {
+    display: grid;
+    width: 2.35rem;
+    height: 2.35rem;
+    flex: none;
+    place-items: center;
+    border: 2px solid var(--pixel-highlight);
+    background: var(--secondary);
+    color: var(--accent);
+    box-shadow: 3px 3px 0 var(--pixel-shadow);
+  }
+  .player-name {
+    display: block;
+    overflow: hidden;
+    color: var(--foreground);
+    font-family: 'Pixelify Sans', var(--font-geist-mono);
+    font-size: 1rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .player-presence {
+    display: block;
+    margin-top: 0.2rem;
+    color: var(--muted-foreground);
+    font-family: var(--font-geist-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
 }
 

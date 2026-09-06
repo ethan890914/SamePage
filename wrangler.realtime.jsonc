@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "same-page-realtime",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-05-15",
+  "dev": { "port": 8787 },
+  "durable_objects": {
+    "bindings": [{ "name": "ARCADE_ROOMS", "class_name": "ArcadeRoom" }],
+  },
+  "ratelimits": [
+    {
+      "name": "ROOM_CREATION_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 10, "period": 60 },
+    },
+  ],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ArcadeRoom"] }],
+  "observability": { "enabled": true },
+}
