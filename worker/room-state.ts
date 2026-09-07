@@ -1,4 +1,4 @@
-import type { ActivityId, PlayerView } from '../lib/protocol';
+import type { ActivityId, AvatarId, PlayerView } from '../lib/protocol';
 
 export const ROOM_STORAGE_KEY = 'room';
 export const CREATOR_RESERVATION_MS = 60_000;
@@ -7,6 +7,7 @@ export const DISCONNECT_GRACE_MS = 45_000;
 export type RoomPlayer = {
   id: string;
   name: string;
+  avatarId: AvatarId;
   sessionTokenHash: string;
   connected: boolean;
   activeConnectionId: string | null;
@@ -44,6 +45,7 @@ export function playerView(player: RoomPlayer): PlayerView {
   return {
     id: player.id,
     name: player.name,
+    avatarId: player.avatarId ?? 'avatar-1',
     connected: player.connected,
     selectedActivity: player.selectedActivity,
     ready: player.ready,

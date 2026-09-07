@@ -110,6 +110,7 @@ try {
     requestId: crypto.randomUUID(),
     sessionToken: creatorToken,
     name: 'Creator',
+    avatarId: 'avatar-2',
     password: 'smoke-test-password',
   };
   const create = () =>
@@ -143,11 +144,19 @@ try {
     command('join_room', {
       sessionToken: secondToken,
       name: 'Second',
+      avatarId: 'avatar-7',
       password: 'smoke-test-password',
     }),
   );
   if (second.message.type !== 'join_accepted')
     throw new Error(JSON.stringify(second.message));
+  if (
+    second.message.players.find((player) => player.id === created.selfId)
+      ?.avatarId !== 'avatar-2' ||
+    second.message.players.find((player) => player.id !== created.selfId)
+      ?.avatarId !== 'avatar-7'
+  )
+    throw new Error('Avatar selections were not synchronized');
 
   const creatorSelected = waitForMessage(
     creator.socket,
@@ -186,6 +195,47 @@ try {
     ),
   );
   await creatorReady;
+
+  const exitedWaitingRoom = waitForMessage(
+    creator.socket,
+    (message) =>
+      message.type === 'room_snapshot' &&
+      message.players.some(
+        (player) =>
+          player.id !== created.selfId && player.selectedActivity === null,
+      ) &&
+      message.players.every((player) => !player.ready),
+  );
+  second.socket.send(
+    JSON.stringify(command('exit_activity', { activityId: 'converge' })),
+  );
+  await exitedWaitingRoom;
+
+  const bothReturned = waitForMessage(
+    creator.socket,
+    (message) =>
+      message.type === 'room_snapshot' &&
+      message.players.every((player) => player.selectedActivity === 'converge'),
+  );
+  second.socket.send(
+    JSON.stringify(command('select_activity', { activityId: 'converge' })),
+  );
+  await bothReturned;
+
+  const creatorReadyAgain = waitForMessage(
+    creator.socket,
+    (message) =>
+      message.type === 'room_snapshot' &&
+      message.players.some(
+        (player) => player.id === created.selfId && player.ready,
+      ),
+  );
+  creator.socket.send(
+    JSON.stringify(
+      command('set_ready', { activityId: 'converge', ready: true }),
+    ),
+  );
+  await creatorReadyAgain;
 
   const creatorStarted = waitForMessage(
     creator.socket,
@@ -226,6 +276,7 @@ try {
       command('join_room', {
         sessionToken: token(),
         name: 'Wrong password',
+        avatarId: 'avatar-1',
         password: 'incorrect-password',
       }),
     );
@@ -238,6 +289,7 @@ try {
     command('join_room', {
       sessionToken: token(),
       name: 'Rate limited',
+      avatarId: 'avatar-1',
       password: 'incorrect-password',
     }),
   );
@@ -252,6 +304,7 @@ try {
       roomCode: created.roomCode,
       idempotentCreation: true,
       joinRateLimit: 'passed',
+      waitingRoomExitReset: 'passed',
       synchronizedActivity: firstStart.activityId,
     }),
   );

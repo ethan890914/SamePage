@@ -257,6 +257,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       const player: RoomPlayer = {
         id: crypto.randomUUID(),
         name: creator.data.name,
+        avatarId: creator.data.avatarId,
         sessionTokenHash,
         connected: false,
         activeConnectionId: null,
@@ -369,6 +370,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       player = {
         id: crypto.randomUUID(),
         name: message.name,
+        avatarId: message.avatarId,
         sessionTokenHash: tokenHash,
         connected: false,
         activeConnectionId: null,

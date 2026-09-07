@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   PROTOCOL_VERSION,
   type ActivityId,
+  type AvatarId,
   type ClientMessage,
   type PlayerView,
   type ServerMessage,
@@ -26,6 +27,7 @@ type StoredSession = {
   roomCode: string;
   sessionToken: string;
   name: string;
+  avatarId: AvatarId;
 };
 
 type ConnectionCredentials = StoredSession & {
@@ -90,6 +92,7 @@ function readStoredSession(): StoredSession | null {
           roomCode: value.roomCode,
           sessionToken: value.sessionToken,
           name: value.name,
+          avatarId: value.avatarId ?? 'avatar-1',
         }
       : null;
   } catch {
@@ -146,6 +149,7 @@ export function useRoomConnection() {
                 requestId: requestId(),
                 sessionToken: credentials.sessionToken,
                 name: credentials.name,
+                avatarId: credentials.avatarId,
                 password: credentials.password ?? '',
               }
             : {
@@ -204,6 +208,7 @@ export function useRoomConnection() {
             roomCode: message.roomCode,
             sessionToken: credentials.sessionToken,
             name: credentials.name,
+            avatarId: credentials.avatarId,
           };
           localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(stored));
           credentialsRef.current = { ...stored, mode: 'reconnect' };
@@ -316,7 +321,7 @@ export function useRoomConnection() {
   }, [clearTimers, openSocket]);
 
   const createRoom = useCallback(
-    async (name: string, password: string) => {
+    async (name: string, avatarId: AvatarId, password: string) => {
       deliberateCloseRef.current = true;
       socketRef.current?.close(1000, 'Starting another room');
       clearTimers();
@@ -328,6 +333,7 @@ export function useRoomConnection() {
         requestId: requestId(),
         sessionToken: token,
         name: name.trim(),
+        avatarId,
         password,
       };
       try {
@@ -349,6 +355,7 @@ export function useRoomConnection() {
           roomCode: result.roomCode,
           sessionToken: token,
           name: payload.name,
+          avatarId: payload.avatarId,
           mode: 'reconnect',
         });
       } catch (cause) {
@@ -365,7 +372,7 @@ export function useRoomConnection() {
   );
 
   const joinRoom = useCallback(
-    (code: string, name: string, password: string) => {
+    (code: string, name: string, avatarId: AvatarId, password: string) => {
       deliberateCloseRef.current = true;
       socketRef.current?.close(1000, 'Joining another room');
       clearTimers();
@@ -375,6 +382,7 @@ export function useRoomConnection() {
         roomCode: normalizeRoomCode(code),
         sessionToken: sessionToken(),
         name: normalizedName,
+        avatarId,
         password,
         mode: 'join',
       });

@@ -25,15 +25,17 @@ with `POST /api/rooms`, then connect to
 `ws://localhost:8787/api/rooms/{ROOM-CODE}/socket`. The socket's first message
 must be `join_room` or `reconnect` from the shared protocol.
 
-The page's Create and Join controls use these endpoints directly. Open the
+The page's Create and Join controls use these endpoints directly. Each player
+chooses one of eight avatars before entering. Open the
 frontend in two browser sessions to create a room, share its code and password,
 and verify the two-player lobby. Refreshing or briefly losing the connection
 keeps a player's slot for 45 seconds.
 
-Players can choose an activity, enter its shared waiting room, and toggle ready.
-When both players choose the same activity and become ready, both clients receive
-the same activity instance. The individual game screens are the next product
-slice.
+Players can choose a spot in the shared home, see each other's avatar move to it,
+enter its shared waiting room, and toggle ready. Switching activities or exiting
+clears the affected ready state for both players. When both players choose the
+same activity and become ready, both clients receive the same activity instance.
+The individual game screens are the next product slice.
 
 Run the realtime integration check with:
 
@@ -49,6 +51,7 @@ front of both the frontend and realtime Worker routes.
 
 - `app/` — application routes, layout, and global design tokens
 - `components/pixel/` — reusable Same Page visual primitives
+- `components/lobby/` — room entry, avatar selection, shared home, and waiting UI
 - `components/ui/` — accessible lower-level interface primitives
 - `lib/protocol.ts` — shared room and activity message types
 - `worker/` — standalone realtime Worker and Durable Object boundary

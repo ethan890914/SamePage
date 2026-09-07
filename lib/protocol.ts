@@ -3,6 +3,18 @@ export const PROTOCOL_VERSION = 1 as const;
 export const activityIds = ['converge', 'pattern-race', 'photo-booth'] as const;
 export type ActivityId = (typeof activityIds)[number];
 
+export const avatarIds = [
+  'avatar-1',
+  'avatar-2',
+  'avatar-3',
+  'avatar-4',
+  'avatar-5',
+  'avatar-6',
+  'avatar-7',
+  'avatar-8',
+] as const;
+export type AvatarId = (typeof avatarIds)[number];
+
 export const joinRejectedReasons = [
   'bad_password',
   'room_full',
@@ -18,6 +30,7 @@ export type CreateRoomRequest = {
   requestId: string;
   sessionToken: string;
   name: string;
+  avatarId: AvatarId;
   password: string;
 };
 
@@ -45,6 +58,7 @@ export type ClientMessage =
       requestId: string;
       sessionToken: string;
       name: string;
+      avatarId: AvatarId;
       password: string;
     }
   | {
@@ -82,6 +96,7 @@ export type ClientMessage =
 export type PlayerView = {
   id: string;
   name: string;
+  avatarId: AvatarId;
   connected: boolean;
   selectedActivity: ActivityId | null;
   ready: boolean;
@@ -194,6 +209,10 @@ export function isActivityId(value: unknown): value is ActivityId {
   return typeof value === 'string' && activityIds.includes(value as ActivityId);
 }
 
+export function isAvatarId(value: unknown): value is AvatarId {
+  return typeof value === 'string' && avatarIds.includes(value as AvatarId);
+}
+
 export function parseCreateRoomRequest(
   value: unknown,
 ): ParseResult<CreateRoomRequest> {
@@ -205,6 +224,7 @@ export function parseCreateRoomRequest(
     'requestId',
     'sessionToken',
     'name',
+    'avatarId',
     'password',
   ];
   if (
@@ -212,6 +232,7 @@ export function parseCreateRoomRequest(
     !isRequestId(value.requestId) ||
     !isSessionToken(value.sessionToken) ||
     !isName(value.name) ||
+    !isAvatarId(value.avatarId) ||
     !isPassword(value.password)
   ) {
     return { success: false, error: 'invalid_message' };
@@ -248,10 +269,12 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
           'requestId',
           'sessionToken',
           'name',
+          'avatarId',
           'password',
         ]) &&
         isSessionToken(value.sessionToken) &&
         isName(value.name) &&
+        isAvatarId(value.avatarId) &&
         isPassword(value.password)
       )
         return { success: true, data: value as ClientMessage };
