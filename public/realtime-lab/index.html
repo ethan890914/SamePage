@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Realtime Lab · WebSockets & Durable Objects</title>
+    <meta
+      name="description"
+      content="A hands-on, browser-only guide to WebSockets, room coordination, and Durable Object hibernation."
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #10151c;
+        --panel: #19212b;
+        --line: #344252;
+        --text: #edf3f9;
+        --muted: #afbed0;
+        --accent: #b7f568;
+        --blue: #85c9ff;
+        --orange: #ffbd83;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button,
+      select {
+        cursor: pointer;
+      }
+      button {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #253242;
+        color: var(--text);
+        padding: 9px 15px;
+        font-weight: 600;
+      }
+      button:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #15200d;
+        border-color: var(--accent);
+      }
+      :focus-visible {
+        outline: 3px solid var(--blue);
+        outline-offset: 4px;
+      }
+      a {
+        color: var(--blue);
+      }
+      header {
+        border-bottom: 1px solid var(--line);
+        padding: 22px max(24px, calc((100vw - 1220px) / 2));
+        display: flex;
+        gap: 20px;
+        justify-content: space-between;
+        align-items: center;
+      }
+      header b {
+        letter-spacing: -0.04em;
+        font-size: 22px;
+      }
+      header b span {
+        color: var(--accent);
+      }
+      .badge,
+      .eyebrow {
+        font:
+          13px/1.5 ui-monospace,
+          monospace;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+      }
+      .badge {
+        color: var(--accent);
+        border: 1px solid #547036;
+        border-radius: 30px;
+        padding: 5px 12px;
+      }
+      main {
+        max-width: 1268px;
+        margin: auto;
+        padding: 35px 24px 60px;
+      }
+      h1 {
+        font-size: clamp(30px, 4vw, 48px);
+        letter-spacing: -0.055em;
+        line-height: 1.13;
+        margin: 8px 0 14px;
+      }
+      h2 {
+        font-size: 25px;
+        letter-spacing: -0.03em;
+        margin: 0 0 10px;
+      }
+      h3 {
+        font-size: 17px;
+        margin: 0 0 12px;
+      }
+      p {
+        margin: 8px 0 16px;
+        color: var(--muted);
+      }
+      .intro {
+        max-width: 800px;
+      }
+      .eyebrow {
+        color: var(--accent);
+      }
+      nav {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 27px 0;
+      }
+      nav button {
+        background: transparent;
+        color: var(--muted);
+        padding: 12px 18px;
+      }
+      nav button[aria-selected='true'] {
+        background: var(--panel);
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 305px;
+        gap: 24px;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 24px;
+        min-width: 0;
+      }
+      .panel-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: start;
+      }
+      .meta {
+        font:
+          13px ui-monospace,
+          monospace;
+        color: var(--muted);
+      }
+      .stage {
+        margin: 24px 0;
+        display: grid;
+        grid-template-columns: 1fr 82px 1.2fr 82px 1fr;
+        align-items: center;
+        min-height: 175px;
+      }
+      .node {
+        padding: 20px 10px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        text-align: center;
+        background: #111923;
+      }
+      .node strong {
+        display: block;
+        font-size: 17px;
+      }
+      .node .glyph {
+        font:
+          24px ui-monospace,
+          monospace;
+        color: var(--blue);
+        display: block;
+        margin-bottom: 10px;
+      }
+      .node.server {
+        border-color: #769c4e;
+        background: #202c21;
+      }
+      .node.server .glyph {
+        color: var(--accent);
+      }
+      .wire {
+        color: var(--accent);
+        text-align: center;
+        font-size: 27px;
+      }
+      .wire.off {
+        color: #526170;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+      .notice {
+        min-height: 66px;
+        border-left: 3px solid var(--accent);
+        background: #111923;
+        padding: 12px 16px;
+        margin-top: 20px;
+        color: var(--text);
+      }
+      .log {
+        margin: 20px 0 0;
+        background: #0c1117;
+        border-radius: 7px;
+        padding: 15px;
+        font:
+          14px/1.8 ui-monospace,
+          monospace;
+        min-height: 135px;
+        max-height: 230px;
+        overflow: auto;
+        list-style: none;
+        overflow-wrap: anywhere;
+      }
+      .log li {
+        border-bottom: 1px solid #1d2834;
+        padding: 3px 0;
+      }
+      .log li:first-child {
+        color: var(--accent);
+      }
+      .log small {
+        color: #8da2b8;
+        margin-right: 12px;
+      }
+      .aside-step {
+        border-top: 1px solid var(--line);
+        padding-top: 17px;
+        margin-top: 17px;
+      }
+      .aside-step b {
+        color: var(--accent);
+      }
+      .aside-step p {
+        font-size: 14px;
+      }
+      .aside-step code,
+      code {
+        color: var(--blue);
+        font-family: ui-monospace, monospace;
+      }
+      .lesson-footer {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-top: 24px;
+      }
+      .lesson-footer .panel {
+        background: transparent;
+      }
+      .lesson-footer p {
+        font-size: 15px;
+      }
+      pre {
+        margin: 16px 0 0;
+        background: #0b1118;
+        padding: 18px;
+        border-radius: 7px;
+        overflow: auto;
+        font:
+          14px/1.7 ui-monospace,
+          monospace;
+        color: var(--blue);
+      }
+      .state-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin: 20px 0;
+      }
+      .state {
+        border: 1px solid var(--line);
+        padding: 15px;
+        border-radius: 8px;
+      }
+      .state strong {
+        font:
+          30px ui-monospace,
+          monospace;
+        display: block;
+        color: var(--accent);
+      }
+      .state span {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      select {
+        background: #111923;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px;
+      }
+      label {
+        font-size: 14px;
+      }
+      .quiz button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        margin-top: 9px;
+        font-weight: 400;
+      }
+      .quiz .feedback {
+        color: var(--accent);
+        margin-top: 12px;
+        min-height: 50px;
+      }
+      footer {
+        margin-top: 30px;
+        border-top: 1px solid var(--line);
+        padding-top: 20px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      footer a {
+        margin-right: 18px;
+      }
+      .pulse {
+        animation: pulse 0.6s ease-out;
+      }
+      @keyframes pulse {
+        50% {
+          box-shadow: 0 0 0 6px #b7f56840;
+          border-color: var(--accent);
+        }
+      }
+      [hidden] {
+        display: none !important;
+      }
+      @media (max-width: 950px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .aside {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 18px;
+        }
+        .aside > h3 {
+          grid-column: 1/-1;
+        }
+        .aside-step {
+          margin: 0;
+        }
+      }
+      @media (max-width: 600px) {
+        header {
+          padding: 18px 20px;
+        }
+        .badge {
+          font-size: 11px;
+        }
+        main {
+          padding: 24px 16px;
+        }
+        .panel {
+          padding: 18px;
+        }
+        .stage {
+          grid-template-columns: 1fr 24px 1.15fr 24px 1fr;
+        }
+        .node {
+          padding: 15px 5px;
+        }
+        .node strong {
+          font-size: 14px;
+        }
+        .node .meta {
+          font-size: 12px;
+        }
+        .wire {
+          font-size: 19px;
+        }
+        .lesson-footer,
+        .aside {
+          grid-template-columns: 1fr;
+        }
+        .state-grid {
+          gap: 7px;
+        }
+        .state {
+          padding: 10px;
+        }
+        .panel-top {
+          flex-wrap: wrap;
+        }
+        nav button {
+          padding: 9px 11px;
+          font-size: 14px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation: none !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b><span>↔</span> Realtime Lab</b
+      ><span class="badge">Browser-only simulation</span>
+    </header>
+    <main>
+      <div class="intro">
+        <div class="eyebrow">Same Page / Field notes 01</div>
+        <h1>Two browsers.<br />One shared reality.</h1>
+        <p>
+          How does your friend’s screen update when you click “Ready”? Explore
+          the connection, the room that coordinates it, and the state that
+          survives sleep.
+        </p>
+      </div>
+      <nav role="tablist" aria-label="Lessons">
+        <button
+          role="tab"
+          id="tab-0"
+          aria-controls="lesson"
+          aria-selected="true"
+          data-tab="0"
+        >
+          01 · The connection</button
+        ><button
+          role="tab"
+          id="tab-1"
+          aria-controls="lesson"
+          aria-selected="false"
+          tabindex="-1"
+          data-tab="1"
+        >
+          02 · The shared room</button
+        ><button
+          role="tab"
+          id="tab-2"
+          aria-controls="lesson"
+          aria-selected="false"
+          tabindex="-1"
+          data-tab="2"
+        >
+          03 · Memory & sleep
+        </button>
+      </nav>
+      <div
+        id="lesson"
+        role="tabpanel"
+        aria-labelledby="tab-0"
+        tabindex="0"
+      ></div>
+      <footer>
+        <p>
+          All clients, traffic, storage, and sleep are simulated in this page.
+          No server connection is opened. Reloading resets everything; real
+          Durable Object storage survives eviction. Timings are illustrative.
+        </p>
+        <a
+          href="https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API"
+          target="_blank"
+          rel="noreferrer"
+          >MDN: WebSockets ↗</a
+        ><a
+          href="https://developers.cloudflare.com/durable-objects/concepts/what-are-durable-objects/"
+          target="_blank"
+          rel="noreferrer"
+          >Cloudflare: Durable Objects ↗</a
+        ><a
+          href="https://developers.cloudflare.com/durable-objects/best-practices/websockets/"
+          target="_blank"
+          rel="noreferrer"
+          >Cloudflare: Hibernation ↗</a
+        >
+      </footer>
+    </main>
+    <script>
+      const lessons = [
+        {
+          title: 'Keep the conversation open',
+          desc: 'HTTP polling asks repeatedly. A WebSocket keeps a two-way channel open, so the server can push updates.',
+          steps: [
+            [
+              'Connect once',
+              'A typical HTTP/1.1 handshake requests an upgrade. A 101 response switches protocols; later messages use the open WebSocket.',
+            ],
+            [
+              'Send both ways',
+              'The browser can send an action; the server can push a new state without waiting for another request.',
+            ],
+            [
+              'Handle disconnections',
+              'WebSockets do not reconnect or replay missed messages automatically. Your application adds that behavior.',
+            ],
+          ],
+          take: 'A WebSocket is a transport, not a database or a game referee. It carries messages; your server code decides what those messages mean.',
+          task: 'Connect, send Ready, then push an update from the server. Disconnect, change the server again, and reconnect. Try the same sequence in polling mode.',
+          code: '// Browser — illustrative code, not executed here\nconst socket = new WebSocket("wss://example.com/room");\nsocket.addEventListener("open", () => {\n  socket.send(JSON.stringify({ type: "ready" }));\n});\nsocket.addEventListener("message", event => {\n  render(JSON.parse(event.data));\n});',
+          question:
+            'The connection drops. Will WebSocket automatically replay missed updates?',
+          answers: [
+            'Yes, the transport stores every update.',
+            'No. The app must reconnect and resynchronize.',
+          ],
+          correct: 1,
+          explain:
+            'Correct. This lab requests a fresh snapshot on reconnect. Replay, retries, and deduplication require application logic.',
+        },
+        {
+          title: 'Give each room a coordinator',
+          desc: 'A Worker routes a room name to a Durable Object. Players in the same room reach the same logical object and its own storage.',
+          steps: [
+            [
+              'Route by identity',
+              'Within a namespace, the same room name resolves to the same object ID. Different room names isolate state.',
+            ],
+            [
+              'Validate, then update',
+              'The object checks an action and updates authoritative state. Clients request changes; they do not decide shared outcomes.',
+            ],
+            [
+              'Broadcast a snapshot',
+              'Application code sends the result to connected room members. A disconnected browser keeps an old view until it resyncs.',
+            ],
+          ],
+          take: 'WebSockets are the channels. The Durable Object is the room’s coordinator, with private durable storage. A single object coordinates one room; many rooms can use many objects.',
+          task: 'Toggle each player’s Ready state. Move Bob to room B and observe that room A cannot start with only Alice. Bring Bob back, disconnect him, and try an update.',
+          code: '// Worker routing — simplified; authentication omitted\nconst room = env.ROOMS.getByName(roomName);\nreturn room.fetch(request);\n\n// Inside the object — application logic\n// Validate identity and message before changing state.\nready[playerId] = true;\nfor (const ws of this.ctx.getWebSockets()) {\n  ws.send(JSON.stringify(publicSnapshot));\n}',
+          question:
+            'Alice joins room A and Bob joins room B. Do they share ready flags?',
+          answers: [
+            'No. Each room has its own object and state.',
+            'Yes, because they use the same Worker.',
+          ],
+          correct: 0,
+          explain:
+            'Correct. The namespace plus room identity determines the object. The routing Worker can send requests to many separate objects.',
+        },
+        {
+          title: 'Durable does not mean always awake',
+          desc: 'With the Hibernation API, an eligible idle object can leave memory while its accepted WebSockets remain connected.',
+          steps: [
+            [
+              'Change state',
+              'Instance fields live in memory. Data explicitly written to object storage can survive a new instance.',
+            ],
+            [
+              'Simulate hibernation',
+              'In-memory fields disappear. The platform retains accepted WebSockets. Real hibernation is automatic when eligible, not a sleep() call.',
+            ],
+            [
+              'Wake on a message',
+              'The constructor runs again. Your code reloads durable state and restores connection metadata as needed.',
+            ],
+          ],
+          take: 'Persist what must survive. Hibernation preserves eligible WebSocket connections, not arbitrary JavaScript variables. Use serialized socket attachments for connection metadata.',
+          task: 'Increment the counter, save it, then increment again. Hibernate and send a wake-up message. Only the saved value returns. Try saving the newer value before sleeping.',
+          code: '// Inside a Durable Object — illustrative fragments\nthis.ctx.acceptWebSocket(serverSocket);\n\n// Explicit persistence (KV-style API)\nawait this.ctx.storage.put("count", this.count);\n\n// On a new instance, initialize before handling events\nthis.ctx.blockConcurrencyWhile(async () => {\n  this.count = (await this.ctx.storage.get("count")) ?? 0;\n});',
+          question:
+            'You saved 3, then changed an instance field to 4. After hibernation, what can you restore?',
+          answers: [
+            '4, because all object memory is durable.',
+            '3, from the last explicit storage write.',
+          ],
+          correct: 1,
+          explain:
+            'Correct. Durable storage survives; unsaved instance fields do not. The example restores the saved value when a new instance starts.',
+        },
+      ];
+      let tab = 0,
+        mode = 'ws',
+        connected = false,
+        server = 0,
+        client = 0,
+        logs = [],
+        serial = 0;
+      let bobRoom = 'A',
+        bobOnline = true,
+        ready = { Alice: false, Bob: false };
+      let memory = 0,
+        saved = 0,
+        sleeping = false,
+        wakes = 1;
+      const root = document.getElementById('lesson');
+      const node = (name, detail, glyph, serverNode = false) =>
+        `<div class="node ${serverNode ? 'server' : ''}"><span class="glyph" aria-hidden="true">${glyph}</span><strong>${name}</strong><span class="meta">${detail}</span></div>`;
+      function log(message) {
+        logs.unshift({ id: ++serial, message });
+        logs = logs.slice(0, 10);
+      }
+      function stage() {
+        if (tab === 0)
+          return `<div class="stage">${node('Your browser', 'view: ' + client, '▣')}<div class="wire ${connected ? '' : 'off'}">${mode === 'ws' && connected ? '↔' : '⇢'}</div>${node('Server', 'value: ' + server, '{ }', true)}<div class="wire off">·</div>${node('Transport', mode === 'ws' ? (connected ? 'OPEN' : 'CLOSED') : 'POLL ON DEMAND', '↔')}</div>`;
+        if (tab === 1)
+          return `<div class="stage">${node('Alice', 'room A · ' + (ready.Alice ? 'ready' : 'not ready'), 'A')}<div class="wire">↔</div>${node('Room A', ready.Alice && ready.Bob && bobRoom === 'A' && bobOnline ? 'BOTH READY ✓' : 'waiting for two', '{ A }', true)}<div class="wire ${bobRoom === 'A' && bobOnline ? '' : 'off'}">${bobRoom === 'A' && bobOnline ? '↔' : '×'}</div>${node('Bob', 'room ' + bobRoom + ' · ' + (bobOnline ? (ready.Bob ? 'ready' : 'not ready') : 'offline'), 'B')}</div>`;
+        return `<div class="stage">${node('Browser', 'socket OPEN', '▣')}<div class="wire">↔</div>${node('Room object', sleeping ? 'HIBERNATING' : 'AWAKE', '{ }', true)}<div class="wire">⇄</div>${node('Storage', 'persisted: ' + saved, '▤')}</div><div class="state-grid"><div class="state"><strong>${sleeping ? '—' : memory}</strong><span>In-memory counter</span></div><div class="state"><strong>${saved}</strong><span>Durable counter</span></div><div class="state"><strong>${wakes}</strong><span>Constructor runs</span></div></div>`;
+      }
+      function controls() {
+        if (tab === 0)
+          return `<div class="controls"><label>Transport <select id="mode"><option value="ws" ${mode === 'ws' ? 'selected' : ''}>WebSocket</option><option value="poll" ${mode === 'poll' ? 'selected' : ''}>HTTP polling</option></select></label>${mode === 'ws' ? `<button class="primary" data-action="connect">${connected ? 'Disconnect' : 'Connect'}</button>` : `<button class="primary" data-action="poll">Poll now</button>`}<button data-action="send" ${mode === 'ws' && !connected ? 'disabled' : ''}>Send Ready ↑</button><button data-action="push">Server update ↓</button></div>`;
+        if (tab === 1)
+          return `<div class="controls"><button class="primary" data-action="alice">Alice: ${ready.Alice ? 'Unready' : 'Ready'}</button><button data-action="bob" ${!bobOnline ? 'disabled' : ''}>Bob: ${ready.Bob ? 'Unready' : 'Ready'}</button><label>Bob’s room <select id="room"><option ${bobRoom === 'A' ? 'selected' : ''}>A</option><option ${bobRoom === 'B' ? 'selected' : ''}>B</option></select></label><button data-action="offline">${bobOnline ? 'Disconnect' : 'Reconnect'} Bob</button></div>`;
+        return `<div class="controls"><button class="primary" data-action="increment" ${sleeping ? 'disabled' : ''}>Increment +1</button><button data-action="save" ${sleeping ? 'disabled' : ''}>Save to storage</button><button data-action="sleep" ${sleeping ? 'disabled' : ''}>Hibernate</button><button data-action="wake" ${!sleeping ? 'disabled' : ''}>Send wake-up message</button></div>`;
+      }
+      function render() {
+        const l = lessons[tab];
+        root.setAttribute('aria-labelledby', 'tab-' + tab);
+        root.innerHTML = `<div class="layout"><section class="panel"><div class="panel-top"><div><div class="eyebrow">Experiment 0${tab + 1}</div><h2>${l.title}</h2></div><button data-action="reset" aria-label="Reset current experiment">↺ Reset</button></div><p>${l.desc}</p>${stage()}${controls()}<div class="notice" role="status">${logs[0]?.message || 'Start with the highlighted button. Observe the state and the event trace.'}</div><ol class="log" aria-label="Event trace">${logs.map((e) => `<li><small>${String(e.id).padStart(2, '0')}</small>${e.message}</li>`).join('') || '<li>Waiting for your first action…</li>'}</ol></section><aside class="panel aside"><h3>What’s happening?</h3>${l.steps.map((s, i) => `<div class="aside-step"><b>0${i + 1} / ${s[0]}</b><p>${s[1]}</p></div>`).join('')}</aside></div><div class="lesson-footer"><section class="panel"><div class="eyebrow">Try this</div><h3>${l.task}</h3><p>${l.take}</p><details><summary>See the code behind the idea</summary><pre></pre><p>Teaching fragments, not a complete deployable service. Production code also needs validation, authentication, error handling, and recovery.</p></details></section><section class="panel quiz"><div class="eyebrow">Check your understanding</div><h3>${l.question}</h3>${l.answers.map((a, i) => `<button data-answer="${i}">${a}</button>`).join('')}<div class="feedback" role="status"></div></section></div>`;
+        root.querySelector('pre').textContent = l.code;
+      }
+      function reset() {
+        logs = [];
+        serial = 0;
+        if (tab === 0) {
+          mode = 'ws';
+          connected = false;
+          server = 0;
+          client = 0;
+        }
+        if (tab === 1) {
+          bobRoom = 'A';
+          bobOnline = true;
+          ready = { Alice: false, Bob: false };
+        }
+        if (tab === 2) {
+          memory = 0;
+          saved = 0;
+          sleeping = false;
+          wakes = 1;
+        }
+        render();
+      }
+      function action(a) {
+        if (a === 'reset') {
+          reset();
+          return;
+        }
+        if (a === 'connect') {
+          connected = !connected;
+          if (connected) {
+            client = server;
+            log(
+              'Handshake → OPEN. App requests snapshot; browser view = ' +
+                client +
+                '.',
+            );
+          } else
+            log('Connection CLOSED. Future pushes cannot reach this browser.');
+        }
+        if (a === 'poll') {
+          client = server;
+          log(
+            'HTTP request → response. Browser reads value ' +
+              client +
+              '. No live subscription.',
+          );
+        }
+        if (a === 'send') {
+          if (mode === 'ws' && !connected) return;
+          server++;
+          client = server;
+          log(
+            mode === 'ws'
+              ? 'Browser → ready action → server → updated snapshot ' +
+                  server +
+                  '.'
+              : 'HTTP POST ready → response with updated snapshot ' +
+                  server +
+                  '.',
+          );
+        }
+        if (a === 'push') {
+          server++;
+          if (mode === 'ws' && connected) {
+            client = server;
+            log(
+              'Server pushes snapshot ' +
+                server +
+                ' over the existing socket. No new browser request.',
+            );
+          } else
+            log(
+              'Server changed to ' +
+                server +
+                '. Browser still shows ' +
+                client +
+                '. ' +
+                (mode === 'poll'
+                  ? 'Poll to fetch the change.'
+                  : 'Reconnect to request a fresh snapshot.'),
+            );
+        }
+        if (a === 'alice' || a === 'bob') {
+          const name = a === 'alice' ? 'Alice' : 'Bob';
+          if (name === 'Bob' && !bobOnline) return;
+          ready[name] = !ready[name];
+          const room = name === 'Bob' ? bobRoom : 'A';
+          log(
+            name +
+              ' → room ' +
+              room +
+              ': ' +
+              (ready[name] ? 'ready' : 'unready') +
+              '. Object updates state and broadcasts to connected members.',
+          );
+          if (bobRoom === 'A' && bobOnline && ready.Alice && ready.Bob)
+            log(
+              'Room A: both ready → activity_started broadcast to Alice and Bob.',
+            );
+        }
+        if (a === 'offline') {
+          bobOnline = !bobOnline;
+          log(
+            bobOnline
+              ? 'Bob reconnects → app fetches the current room snapshot.'
+              : 'Bob disconnected. No broadcasts reach Bob. This lab pauses the start condition; a real app defines its own grace-period policy.',
+          );
+        }
+        if (a === 'increment' && !sleeping) {
+          memory++;
+          log(
+            'Instance field count = ' +
+              memory +
+              '. Durable storage is still ' +
+              saved +
+              '.',
+          );
+        }
+        if (a === 'save' && !sleeping) {
+          saved = memory;
+          log('storage.put completed. Saved counter = ' + saved + '.');
+        }
+        if (a === 'sleep' && !sleeping) {
+          sleeping = true;
+          memory = null;
+          log(
+            'Eligible idle object leaves memory. Accepted sockets stay open; storage keeps ' +
+              saved +
+              '.',
+          );
+        }
+        if (a === 'wake' && sleeping) {
+          sleeping = false;
+          memory = saved;
+          wakes++;
+          log(
+            'Incoming message → constructor runs → reload saved counter ' +
+              saved +
+              ' → handle message.',
+          );
+        }
+        const focusAction = a;
+        render();
+        root
+          .querySelector(`[data-action="${focusAction}"]:not(:disabled)`)
+          ?.focus({ preventScroll: true });
+        root.querySelector('.server')?.classList.add('pulse');
+      }
+      root.addEventListener('click', (e) => {
+        const button = e.target.closest('button');
+        if (!button) return;
+        if (button.dataset.action) action(button.dataset.action);
+        if (button.dataset.answer !== undefined) {
+          const l = lessons[tab];
+          root.querySelector('.feedback').textContent =
+            Number(button.dataset.answer) === l.correct
+              ? l.explain
+              : 'Not quite. ' +
+                (tab === 0
+                  ? 'A socket transports messages while connected; recovery is application code.'
+                  : tab === 1
+                    ? 'Different room names route to separate object identities.'
+                    : 'Only explicitly persisted values survive the loss of instance memory.');
+        }
+      });
+      root.addEventListener('change', (e) => {
+        if (e.target.id === 'mode') {
+          mode = e.target.value;
+          connected = false;
+          log(
+            'Switched to ' +
+              (mode === 'ws'
+                ? 'WebSocket. Connect to open the channel.'
+                : 'manual polling. Each click represents a polling interval.'),
+          );
+          render();
+          root.querySelector('#mode').focus();
+        }
+        if (e.target.id === 'room') {
+          bobRoom = e.target.value;
+          ready.Bob = false;
+          ready.Alice = false;
+          log(
+            'Bob routed to object ' +
+              bobRoom +
+              '. Ready flags reset by this lab’s membership policy. Room A and room B have separate state.',
+          );
+          render();
+          root.querySelector('#room').focus();
+        }
+      });
+      function selectTab(n) {
+        tab = n;
+        document.querySelectorAll('[data-tab]').forEach((b) => {
+          const active = Number(b.dataset.tab) === tab;
+          b.setAttribute('aria-selected', String(active));
+          b.tabIndex = active ? 0 : -1;
+        });
+        reset();
+      }
+      document.querySelector('nav').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-tab]');
+        if (b) selectTab(Number(b.dataset.tab));
+      });
+      document.querySelector('nav').addEventListener('keydown', (e) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+        e.preventDefault();
+        selectTab(
+          e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? 2
+              : (tab + (e.key === 'ArrowRight' ? 1 : 2)) % 3,
+        );
+        document.getElementById('tab-' + tab).focus();
+      });
+      render();
+      if (document.modelContext?.registerTool) {
+        const lifecycle = new AbortController();
+        const allowed = [
+          ['connect', 'poll', 'send', 'push', 'reset'],
+          ['alice', 'bob', 'offline', 'reset'],
+          ['increment', 'save', 'sleep', 'wake', 'reset'],
+        ];
+        try {
+          Promise.resolve(
+            document.modelContext.registerTool(
+              {
+                name: 'run_lab_experiment',
+                description:
+                  'Start a fresh lesson and run a sequence of simulated actions. Resets that lesson first.',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    lesson: { type: 'integer', minimum: 0, maximum: 2 },
+                    actions: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      maxItems: 20,
+                    },
+                  },
+                  required: ['lesson', 'actions'],
+                  additionalProperties: false,
+                },
+                annotations: {
+                  readOnlyHint: false,
+                  untrustedContentHint: false,
+                },
+                execute(input) {
+                  if (
+                    !input ||
+                    !Number.isInteger(input.lesson) ||
+                    !allowed[input.lesson] ||
+                    !Array.isArray(input.actions) ||
+                    input.actions.length > 20 ||
+                    input.actions.some(
+                      (a) => !allowed[input.lesson].includes(a),
+                    )
+                  )
+                    throw new Error(
+                      'Choose lesson 0–2 and valid actions for that lesson.',
+                    );
+                  selectTab(input.lesson);
+                  input.actions.forEach(action);
+                  return {
+                    lesson: tab,
+                    events: logs.map((e) => e.message),
+                    connection: connected,
+                    server,
+                    client,
+                    memory,
+                    saved,
+                    sleeping,
+                  };
+                },
+              },
+              { signal: lifecycle.signal },
+            ),
+          ).catch(() => {});
+        } catch {}
+        window.addEventListener('pagehide', () => lifecycle.abort(), {
+          once: true,
+        });
+      }
+    </script>
+  </body>
+</html>
