@@ -5,7 +5,7 @@ import {
   type ConvergeState,
 } from '../lib/converge';
 import { DurableObject } from 'cloudflare:workers';
-import { AUTO_START_MS, TAKE_DURATION_MS } from '../lib/photo-booth';
+import { AUTO_START_MS, takeDuration } from '../lib/photo-booth';
 import {
   PROTOCOL_VERSION,
   parseClientMessage,
@@ -212,6 +212,7 @@ export class ArcadeRoom extends DurableObject<Env> {
 
     if (
       parsed.data.type === 'set_game_settings' ||
+      parsed.data.type === 'set_booth_settings' ||
       parsed.data.type === 'select_activity' ||
       parsed.data.type === 'set_ready' ||
       parsed.data.type === 'exit_activity'
@@ -550,7 +551,8 @@ export class ArcadeRoom extends DurableObject<Env> {
           | 'select_activity'
           | 'set_ready'
           | 'exit_activity'
-          | 'set_game_settings';
+          | 'set_game_settings'
+          | 'set_booth_settings';
       }
     >,
   ) {
@@ -578,7 +580,19 @@ export class ArcadeRoom extends DurableObject<Env> {
         return;
       }
 
-      if (command.type === 'set_game_settings') {
+      if (command.type === 'set_booth_settings') {
+        if (player.selectedActivity !== 'photo-booth') {
+          this.sendCommandRejected(ws, command.requestId, 'not_in_activity');
+          return;
+        }
+        if ((room.boothCountdownSeconds ?? 10) === command.countdownSeconds)
+          return;
+        room.boothCountdownSeconds = command.countdownSeconds;
+        for (const candidate of room.players) {
+          if (candidate.selectedActivity === 'photo-booth')
+            candidate.ready = false;
+        }
+      } else if (command.type === 'set_game_settings') {
         if (player.selectedActivity !== command.activityId) {
           this.sendCommandRejected(ws, command.requestId, 'not_in_activity');
           return;
@@ -695,6 +709,7 @@ export class ArcadeRoom extends DurableObject<Env> {
     const message: ServerMessage = {
       type: 'room_snapshot',
       convergeSettings: room.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
+      boothCountdownSeconds: room.boothCountdownSeconds ?? 10,
       protocolVersion: PROTOCOL_VERSION,
       serverTime: Date.now(),
       roomCode: room.roomCode,
@@ -895,6 +910,7 @@ export class ArcadeRoom extends DurableObject<Env> {
           : {
               instanceId: message.instanceId,
               frame: 'classic' as const,
+              countdownSeconds: room.boothCountdownSeconds ?? 10,
               leftId: room.players[0].id,
               readyIds: [],
               takeId: null,
@@ -930,7 +946,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       }
       const capturing =
         state.startsAt !== null &&
-        Date.now() < state.startsAt + TAKE_DURATION_MS;
+        Date.now() < state.startsAt + takeDuration(state.countdownSeconds);
       if (command.kind === 'sync') {
         // A new camera connection invalidates consent and any unfinished take.
         state.readyIds = [];

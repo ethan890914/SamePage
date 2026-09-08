@@ -8,6 +8,7 @@ export type BoothState = {
   takeId: string | null;
   startsAt: number | null;
   autoStartAt: number | null;
+  countdownSeconds?: number;
 };
 export type BoothCommand =
   | { kind: 'sync' }
@@ -67,7 +68,18 @@ export function isBoothCommand(value: unknown): value is BoothCommand {
 export const SHOT_INTERVAL = 11_000;
 export const COUNTDOWN_MS = 10_000;
 export const AUTO_START_MS = 3000;
-export function shotTime(startsAt: number, index: number) {
-  return startsAt + COUNTDOWN_MS + index * SHOT_INTERVAL;
+export function shotTime(
+  startsAt: number,
+  index: number,
+  countdownSeconds = 10,
+) {
+  return (
+    startsAt +
+    countdownSeconds * 1000 +
+    index * (countdownSeconds * 1000 + 1000)
+  );
+}
+export function takeDuration(countdownSeconds = 10) {
+  return shotTime(0, 3, countdownSeconds) + 1000;
 }
 export const TAKE_DURATION_MS = shotTime(0, 3) + 1000;

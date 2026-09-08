@@ -1,10 +1,13 @@
 # Shared photo booth
 
-Both players enter Photo Booth through the existing lobby, enable cameras, choose
-a frame and sides, and mark themselves ready. When both are ready, the enabled
+Both players select Photo Booth in the lobby and see an entry screen matching
+Converge. They enable and preview their cameras, choose a shared 10, 12, or
+15-second countdown (default 10), and get ready. Changing the setting clears both
+ready flags. Camera streams carry into the booth without another permission request.
+Inside the booth, they choose a frame and sides, and mark themselves ready. When both are ready, the enabled
 start button counts down from three and the session starts automatically. Either
 person can click it to start sooner. Cancelling ready cancels the shared countdown.
-Every shot has a 10-second countdown, with a one-second flash interval between shots.
+Every shot uses the selected countdown, with a one-second flash interval between shots.
 The resulting PNG contains four rows, each with the same left/right player pairing.
 
 ## Implementation
@@ -23,8 +26,9 @@ The resulting PNG contains four rows, each with the same left/right player pairi
 - A Durable Object alarm owns the shared three-second start deadline. Manual
   starts and the alarm use the same guarded transition, so a late click cannot
   create a second take. Unreadying, swapping sides, resetting, and disconnecting
-  cancel the deadline. The ten-second countdown for every photo is independent.
-- Each camera is captured locally at start + 10, 21, 32, and 43 seconds. Server
+  cancel the deadline. The configurable countdown for every photo is independent.
+- Each camera is captured locally at start + countdown + index × (countdown + 1)
+  seconds; at the default this is 10, 21, 32, and 43 seconds. Server
   timestamps estimate clock offsets; browser scheduling and network delay mean
   synchronization is approximate. Unfocused/hidden windows with live camera
   frames can still capture; brief timer delays are tolerated. A timer delayed by
@@ -34,7 +38,8 @@ The resulting PNG contains four rows, each with the same left/right player pairi
 - Preview and capture use the same canvas cropping/mirroring function. Source
   images are 600 × 600 per person. Export is a 1280 × 2850 PNG, composed locally
   from both sets of stills. No image bytes are written to the room or server storage.
-- Camera tracks stop on exit, disconnect, or unmount. Refreshing loses photos;
+- Camera tracks stop on exiting the photo booth activity or closing the page.
+  Brief room disconnects preserve the entry-owned camera for reconnection. Refreshing loses photos;
   users need to retake. Returning to the lobby ends the booth for both players.
 
 ## Optional shared background

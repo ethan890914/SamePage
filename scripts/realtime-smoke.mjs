@@ -416,6 +416,18 @@ try {
     creator.socket,
     (m) => m.type === 'activity_started',
   );
+  await snapshotCommand(
+    second.socket,
+    'set_booth_settings',
+    { activityId: 'photo-booth', countdownSeconds: 15 },
+    (m) => m.boothCountdownSeconds === 15 && m.players.every((p) => !p.ready),
+  );
+  await snapshotCommand(
+    creator.socket,
+    'set_ready',
+    { activityId: 'photo-booth', ready: true },
+    (m) => m.players.some((p) => p.id === created.selfId && p.ready),
+  );
   second.socket.send(
     JSON.stringify(
       command('set_ready', { activityId: 'photo-booth', ready: true }),
@@ -433,6 +445,8 @@ try {
   }
   const ice = waitForMessage(creator.socket, (m) => m.type === 'booth_ice');
   const initial = await boothCommand(creator.socket, { kind: 'sync' });
+  if (initial.countdownSeconds !== 15)
+    throw new Error('Booth countdown was not carried into the session');
   const iceConfig = await ice;
   if (!iceConfig.iceServers.length || initial.leftId !== created.selfId)
     throw new Error('Booth initialization failed');

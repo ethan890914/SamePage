@@ -1,4 +1,5 @@
 import { GameEntry } from '@/components/games/game-entry';
+import type { ReactNode } from 'react';
 import type { ConvergeSettings } from '@/lib/game-settings';
 import { Check, Copy, LogOut, X } from 'lucide-react';
 import Image from 'next/image';
@@ -13,6 +14,12 @@ const positions: Record<ActivityId, string> = {
 };
 
 type Props = {
+  boothCamera: ReactNode;
+  boothCameraReady: boolean;
+  boothCameraBusy: boolean;
+  onEnableBoothCamera: () => void;
+  boothCountdownSeconds: number;
+  onBoothCountdown: (seconds: number) => void;
   convergeSettings: ConvergeSettings;
   onConvergeSettings: (settings: ConvergeSettings) => void;
   activeActivity: ActivityId | null;
@@ -62,6 +69,12 @@ function PlayerSprite({
 }
 
 export function ArcadeLobby({
+  boothCamera,
+  boothCameraReady,
+  boothCameraBusy,
+  onEnableBoothCamera,
+  boothCountdownSeconds,
+  onBoothCountdown,
   convergeSettings,
   onConvergeSettings,
   activeActivity,
@@ -133,10 +146,16 @@ export function ArcadeLobby({
           </button>
         </div>
       )}
-      {selectedActivity &&
-      selectedActivity.id !== 'photo-booth' &&
-      !activeActivity ? (
+      {selectedActivity && !activeActivity ? (
         <GameEntry
+          camera={boothCamera}
+          cameraBusy={boothCameraBusy}
+          onEnableCamera={onEnableBoothCamera}
+          cameraReady={
+            selectedActivity.id !== 'photo-booth' || boothCameraReady
+          }
+          countdownSeconds={boothCountdownSeconds}
+          onCountdown={onBoothCountdown}
           activityId={selectedActivity.id}
           players={players}
           selfId={selfId}

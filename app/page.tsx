@@ -6,6 +6,8 @@ import { EntryScreen, type EntryMode } from '@/components/lobby/entry-screen';
 import { PixelStatus } from '@/components/pixel/pixel-status';
 import { useRoomConnection } from '@/hooks/use-room-connection';
 import { PhotoBooth } from '@/components/photo-booth/photo-booth';
+import { EntryCamera } from '@/components/photo-booth/entry-camera';
+import { useEntryCamera } from '@/hooks/use-entry-camera';
 import { ConvergeGame } from '@/components/games/converge-game';
 import { isAvatarId, type AvatarId } from '@/lib/protocol';
 
@@ -25,6 +27,15 @@ export default function Home() {
   });
   const [copied, setCopied] = useState(false);
   const room = useRoomConnection();
+  const camera = useEntryCamera(
+    room.players.find((player) => player.id === room.selfId)
+      ?.selectedActivity === 'photo-booth',
+    () => {
+      if (!room.activeActivity) room.setReady('photo-booth', false);
+      else if (room.activityInstanceId)
+        room.sendBooth(room.activityInstanceId, { kind: 'reset' });
+    },
+  );
   const busy = ['creating', 'connecting', 'reconnecting'].includes(room.status);
   const inRoom = Boolean(room.roomCode && room.selfId);
 
@@ -94,6 +105,7 @@ export default function Home() {
             room.players.length === 2 &&
             room.players.every((player) => player.connected) ? (
             <PhotoBooth
+              initialStream={camera.stream}
               key={room.activityInstanceId}
               selfId={room.selfId}
               peerId={
@@ -107,6 +119,14 @@ export default function Home() {
             />
           ) : (
             <ArcadeLobby
+              boothCamera={
+                <EntryCamera stream={camera.stream} error={camera.error} />
+              }
+              boothCameraReady={Boolean(camera.stream)}
+              boothCameraBusy={camera.busy}
+              onEnableBoothCamera={() => void camera.enable()}
+              boothCountdownSeconds={room.boothCountdownSeconds}
+              onBoothCountdown={room.updateBoothCountdown}
               convergeSettings={room.convergeSettings}
               onConvergeSettings={room.updateConvergeSettings}
               activeActivity={room.activeActivity}

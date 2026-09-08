@@ -64,6 +64,13 @@ export type CreateRoomError = {
 
 export type ClientMessage =
   | {
+      type: 'set_booth_settings';
+      protocolVersion: typeof PROTOCOL_VERSION;
+      requestId: string;
+      activityId: 'photo-booth';
+      countdownSeconds: number;
+    }
+  | {
       type: 'converge_command';
       protocolVersion: typeof PROTOCOL_VERSION;
       requestId: string;
@@ -184,6 +191,7 @@ export type ServerMessage =
   | (ServerEnvelope & {
       type: 'room_snapshot';
       convergeSettings?: ConvergeSettings;
+      boothCountdownSeconds?: number;
       roomCode: string;
       revision: number;
       players: PlayerView[];
@@ -344,6 +352,20 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
         ]) &&
         value.activityId === 'converge' &&
         isConvergeSettings(value.settings)
+      )
+        return { success: true, data: value as ClientMessage };
+      break;
+    case 'set_booth_settings':
+      if (
+        hasOnlyKeys(value, [
+          'type',
+          'protocolVersion',
+          'requestId',
+          'activityId',
+          'countdownSeconds',
+        ]) &&
+        value.activityId === 'photo-booth' &&
+        [10, 12, 15].includes(value.countdownSeconds as number)
       )
         return { success: true, data: value as ClientMessage };
       break;

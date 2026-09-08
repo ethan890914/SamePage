@@ -23,6 +23,7 @@ export type RoomPlayer = {
 export type StoredRoom = {
   converge?: ConvergeState;
   convergeSettings?: ConvergeSettings;
+  boothCountdownSeconds?: number;
   booth?: BoothState;
   schemaVersion: 1;
   creationRequestId: string;

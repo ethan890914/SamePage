@@ -16,8 +16,7 @@ import { useBoothBackground } from '@/hooks/use-booth-background';
 import {
   frameIds,
   shotTime,
-  SHOT_INTERVAL,
-  TAKE_DURATION_MS,
+  takeDuration,
   type FrameId,
 } from '@/lib/photo-booth';
 import type { PlayerView } from '@/lib/protocol';
@@ -174,6 +173,7 @@ export function PhotoBooth(
     original: boolean;
   }>({ takeId: null, original: false });
   const { state } = booth;
+  const countdownSeconds = state?.countdownSeconds ?? 10;
   const frame = state?.frame ?? 'classic';
   const leftId = state?.leftId ?? props.selfId;
   const rightId = leftId === props.selfId ? props.peerId : props.selfId;
@@ -189,29 +189,34 @@ export function PhotoBooth(
     !(backgroundChoice.takeId === state?.takeId && backgroundChoice.original);
   const stripPhotos = usingShared ? background.photos : booth.photos;
   const capturing =
-    state?.startsAt != null && booth.clock < state.startsAt + TAKE_DURATION_MS;
+    state?.startsAt != null &&
+    booth.clock < state.startsAt + takeDuration(countdownSeconds);
   const shotIndex =
     state?.startsAt != null
       ? Math.min(
           3,
           Math.max(
             0,
-            Math.floor((booth.clock - state.startsAt) / SHOT_INTERVAL),
+            Math.floor(
+              (booth.clock - state.startsAt) / (countdownSeconds * 1000 + 1000),
+            ),
           ),
         )
       : 0;
   const remaining =
     state?.startsAt != null
       ? Math.min(
-          10,
+          countdownSeconds,
           Math.max(
             0,
             Math.ceil(
-              (shotTime(state.startsAt, shotIndex) - booth.clock) / 1000,
+              (shotTime(state.startsAt, shotIndex, countdownSeconds) -
+                booth.clock) /
+                1000,
             ),
           ),
         )
-      : 10;
+      : countdownSeconds;
   const ready = state?.readyIds.includes(props.selfId) ?? false;
   const bothReady = state?.readyIds.length === 2;
   const startRemaining =
@@ -406,7 +411,7 @@ export function PhotoBooth(
           </div>
           <p className="booth-help" aria-live="polite">
             {capturing
-              ? '10 seconds before every photo. Keep this tab open.'
+              ? `${countdownSeconds} seconds before every photo. Keep this tab open.`
               : complete
                 ? 'Choose a frame and save your strip.'
                 : locked
@@ -414,7 +419,7 @@ export function PhotoBooth(
                   : !canReady
                     ? 'Enable both cameras before getting ready.'
                     : ready
-                      ? 'Ready when your person is. Four photos, 10 seconds to pose for each.'
+                      ? `Ready when your person is. Four photos, ${countdownSeconds} seconds to pose for each.`
                       : 'Choose your sides and framing, then both tap “I’m ready”.'}
           </p>
           <fieldset

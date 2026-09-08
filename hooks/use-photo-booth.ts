@@ -13,6 +13,7 @@ export type Crop = { zoom: number; x: number; y: number; mirror: boolean };
 export const defaultCrop: Crop = { zoom: 1, x: 50, y: 50, mirror: true };
 export type BoothConnection = {
   selfId: string;
+  initialStream?: MediaStream | null;
   peerId: string;
   instanceId: string;
   send: (instanceId: string, command: BoothCommand) => void;
@@ -77,6 +78,7 @@ async function sendPhoto(
 }
 
 export function usePhotoBooth({
+  initialStream,
   selfId,
   peerId,
   instanceId,
@@ -84,7 +86,9 @@ export function usePhotoBooth({
   subscribe,
 }: BoothConnection) {
   const [state, setState] = useState<BoothState | null>(null);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(
+    initialStream ?? null,
+  );
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [connected, setConnected] = useState(false);
   const [enabling, setEnabling] = useState(false);
@@ -97,7 +101,7 @@ export function usePhotoBooth({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const stateRef = useRef(state);
   const cropRef = useRef(crop);
-  const streamRef = useRef<MediaStream | null>(null);
+  const streamRef = useRef<MediaStream | null>(initialStream ?? null);
   const cameraRef = useRef<BoothCamera | null>(null);
   const channelRef = useRef<RTCDataChannel | null>(null);
   const offsetRef = useRef(0);
@@ -111,11 +115,16 @@ export function usePhotoBooth({
 
   useEffect(() => {
     aliveRef.current = true;
+    const track = initialStream?.getVideoTracks()[0];
+    const ended = () => setLocalStream(null);
+    track?.addEventListener('ended', ended);
     return () => {
+      track?.removeEventListener('ended', ended);
       aliveRef.current = false;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (streamRef.current !== initialStream)
+        streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, []);
+  }, [initialStream]);
 
   useEffect(() => {
     let disposed = false;
@@ -397,7 +406,9 @@ export function usePhotoBooth({
           video,
           streamRef.current,
           channel,
-          Date.now() + offsetRef.current - shotTime(startsAt, index),
+          Date.now() +
+            offsetRef.current -
+            shotTime(startsAt, index, state.countdownSeconds),
           (ctx, source) => drawCamera(ctx, source, cropRef.current),
         );
         setPhotos((current) => {
@@ -417,7 +428,8 @@ export function usePhotoBooth({
     };
     for (let i = 0; i < 4; i++) {
       const delay =
-        shotTime(state.startsAt, i) - (Date.now() + offsetRef.current);
+        shotTime(state.startsAt, i, state.countdownSeconds) -
+        (Date.now() + offsetRef.current);
       if (delay >= 0)
         timers.push(
           window.setTimeout(() => {
@@ -426,7 +438,9 @@ export function usePhotoBooth({
         );
     }
     const deadline =
-      shotTime(startsAt, 3) + 20_000 - (Date.now() + offsetRef.current);
+      shotTime(startsAt, 3, state.countdownSeconds) +
+      20_000 -
+      (Date.now() + offsetRef.current);
     timers.push(
       window.setTimeout(
         () => {
@@ -444,7 +458,13 @@ export function usePhotoBooth({
       cancelled = true;
       timers.forEach(clearTimeout);
     };
-  }, [state?.takeId, state?.startsAt, command, selfId]);
+  }, [
+    state?.takeId,
+    state?.startsAt,
+    state?.countdownSeconds,
+    command,
+    selfId,
+  ]);
 
   return {
     state,

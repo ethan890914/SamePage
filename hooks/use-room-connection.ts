@@ -118,6 +118,7 @@ export function useRoomConnection() {
   const [activityInstanceId, setActivityInstanceId] = useState<string | null>(
     null,
   );
+  const [boothCountdownSeconds, setBoothCountdownSeconds] = useState(10);
   const boothListeners = useRef(new Set<(message: ServerMessage) => void>());
   const [convergeState, setConvergeState] =
     useState<ConvergePublicState | null>(null);
@@ -257,6 +258,7 @@ export function useRoomConnection() {
           setConvergeSettings(
             message.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
           );
+          setBoothCountdownSeconds(message.boothCountdownSeconds ?? 10);
           setActiveActivity(message.activeActivity);
           setActivityInstanceId(message.activityInstanceId ?? null);
           if (message.activeActivity !== 'converge') setConvergeState(null);
@@ -452,6 +454,11 @@ export function useRoomConnection() {
     (
       command:
         | {
+            type: 'set_booth_settings';
+            activityId: 'photo-booth';
+            countdownSeconds: number;
+          }
+        | {
             type: 'set_game_settings';
             activityId: 'converge';
             settings: ConvergeSettings;
@@ -518,6 +525,13 @@ export function useRoomConnection() {
     convergeState,
     sendConverge,
     convergeSettings,
+    boothCountdownSeconds,
+    updateBoothCountdown: (countdownSeconds: number) =>
+      sendActivityCommand({
+        type: 'set_booth_settings',
+        activityId: 'photo-booth',
+        countdownSeconds,
+      }),
     updateConvergeSettings: (settings: ConvergeSettings) =>
       sendActivityCommand({
         type: 'set_game_settings',
