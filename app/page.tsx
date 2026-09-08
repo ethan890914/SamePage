@@ -6,6 +6,7 @@ import { EntryScreen, type EntryMode } from '@/components/lobby/entry-screen';
 import { PixelStatus } from '@/components/pixel/pixel-status';
 import { useRoomConnection } from '@/hooks/use-room-connection';
 import { PhotoBooth } from '@/components/photo-booth/photo-booth';
+import { ConvergeGame } from '@/components/games/converge-game';
 import { isAvatarId, type AvatarId } from '@/lib/protocol';
 
 export default function Home() {
@@ -76,11 +77,22 @@ export default function Home() {
         </header>
 
         {inRoom && room.roomCode && room.selfId ? (
-          room.activeActivity === 'photo-booth' &&
-          room.activityInstanceId &&
-          room.status === 'connected' &&
-          room.players.length === 2 &&
-          room.players.every((player) => player.connected) ? (
+          room.activeActivity === 'converge' && room.activityInstanceId ? (
+            <ConvergeGame
+              key={room.activityInstanceId}
+              instanceId={room.activityInstanceId}
+              players={room.players}
+              selfId={room.selfId}
+              state={room.convergeState}
+              status={room.status}
+              send={room.sendConverge}
+              onExit={() => room.exitActivity('converge')}
+            />
+          ) : room.activeActivity === 'photo-booth' &&
+            room.activityInstanceId &&
+            room.status === 'connected' &&
+            room.players.length === 2 &&
+            room.players.every((player) => player.connected) ? (
             <PhotoBooth
               key={room.activityInstanceId}
               selfId={room.selfId}
@@ -95,6 +107,8 @@ export default function Home() {
             />
           ) : (
             <ArcadeLobby
+              convergeSettings={room.convergeSettings}
+              onConvergeSettings={room.updateConvergeSettings}
               activeActivity={room.activeActivity}
               copied={copied}
               error={room.error}

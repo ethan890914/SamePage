@@ -201,6 +201,41 @@ try {
   );
   await creatorReady;
 
+  const settingsSynced = [creator.socket, second.socket].map((socket) =>
+    waitForMessage(
+      socket,
+      (message) =>
+        message.type === 'room_snapshot' &&
+        message.convergeSettings?.timeLimitSeconds === 30 &&
+        message.convergeSettings?.mode === 'limited' &&
+        message.convergeSettings?.maxRounds === 5 &&
+        message.players.every((player) => !player.ready),
+    ),
+  );
+  second.socket.send(
+    JSON.stringify(
+      command('set_game_settings', {
+        activityId: 'converge',
+        settings: { timeLimitSeconds: 30, mode: 'limited', maxRounds: 5 },
+      }),
+    ),
+  );
+  await Promise.all(settingsSynced);
+
+  const invalidSettings = waitForMessage(
+    second.socket,
+    (message) => message.type === 'protocol_error',
+  );
+  second.socket.send(
+    JSON.stringify(
+      command('set_game_settings', {
+        activityId: 'converge',
+        settings: { timeLimitSeconds: -1, mode: 'limited', maxRounds: 5 },
+      }),
+    ),
+  );
+  await invalidSettings;
+
   const exitedWaitingRoom = waitForMessage(
     creator.socket,
     (message) =>
@@ -261,6 +296,86 @@ try {
   ]);
   if (firstStart.activityInstanceId !== secondStart.activityInstanceId)
     throw new Error('Players received different activity instances');
+
+  const convergeInstanceId = firstStart.activityInstanceId;
+  async function convergeCommand(socket, value) {
+    const payload = command('converge_command', {
+      instanceId: convergeInstanceId,
+      command: value,
+    });
+    const response = waitForMessage(
+      socket,
+      (message) =>
+        message.type === 'converge_state' &&
+        message.requestId === payload.requestId,
+    );
+    socket.send(JSON.stringify(payload));
+    return (await response).state;
+  }
+
+  const opening = await convergeCommand(creator.socket, {
+    kind: 'submit',
+    round: 1,
+    word: 'ocean',
+  });
+  if (
+    opening.history.length !== 0 ||
+    !opening.submittedIds.includes(created.selfId) ||
+    JSON.stringify(opening).includes('ocean')
+  )
+    throw new Error('Converge exposed a private submission');
+
+  const connectedRound = await convergeCommand(second.socket, {
+    kind: 'submit',
+    round: 1,
+    word: 'mountain',
+  });
+  if (
+    connectedRound.round !== 2 ||
+    connectedRound.phase !== 'playing' ||
+    connectedRound.baseWords?.[0] !== 'ocean' ||
+    connectedRound.baseWords?.[1] !== 'mountain' ||
+    connectedRound.deadline <= Date.now()
+  )
+    throw new Error('Converge did not reveal and start the timed round');
+
+  await convergeCommand(creator.socket, {
+    kind: 'submit',
+    round: 2,
+    word: 'running',
+  });
+  const normalizedWin = await convergeCommand(second.socket, {
+    kind: 'submit',
+    round: 2,
+    word: 'run',
+  });
+  if (normalizedWin.phase !== 'won' || !normalizedWin.history.at(-1)?.matched)
+    throw new Error('Converge normalization did not recognize word forms');
+
+  const returnedToSetup = waitForMessage(
+    creator.socket,
+    (message) =>
+      message.type === 'room_snapshot' &&
+      message.activeActivity === null &&
+      message.players.every(
+        (player) => player.selectedActivity === 'converge' && !player.ready,
+      ),
+  );
+  second.socket.send(
+    JSON.stringify(
+      command('converge_command', {
+        instanceId: convergeInstanceId,
+        command: { kind: 'return_to_setup' },
+      }),
+    ),
+  );
+  const setupSnapshot = await returnedToSetup;
+  if (
+    setupSnapshot.convergeSettings?.timeLimitSeconds !== 30 ||
+    setupSnapshot.convergeSettings?.mode !== 'limited' ||
+    setupSnapshot.convergeSettings?.maxRounds !== 5
+  )
+    throw new Error('Converge retry did not preserve game settings');
 
   async function snapshotCommand(socket, type, fields, predicate) {
     const response = waitForMessage(

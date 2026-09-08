@@ -1,3 +1,5 @@
+import type { ConvergeSettings } from '../lib/game-settings';
+import type { ConvergeState } from '../lib/converge';
 import type { ActivityId, AvatarId, PlayerView } from '../lib/protocol';
 import type { BoothState } from '../lib/photo-booth';
 
@@ -19,6 +21,8 @@ export type RoomPlayer = {
 };
 
 export type StoredRoom = {
+  converge?: ConvergeState;
+  convergeSettings?: ConvergeSettings;
   booth?: BoothState;
   schemaVersion: 1;
   creationRequestId: string;

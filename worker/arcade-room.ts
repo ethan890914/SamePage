@@ -1,3 +1,9 @@
+import { DEFAULT_CONVERGE_SETTINGS } from '../lib/game-settings';
+import {
+  convergeWordsMatch,
+  publicConvergeState,
+  type ConvergeState,
+} from '../lib/converge';
 import { DurableObject } from 'cloudflare:workers';
 import { AUTO_START_MS, TAKE_DURATION_MS } from '../lib/photo-booth';
 import {
@@ -67,6 +73,7 @@ export class ArcadeRoom extends DurableObject<Env> {
         if (room.players.length < 2) {
           room.activeActivity = null;
           room.activeActivityInstanceId = null;
+          delete room.converge;
         }
         room.revision += 1;
         await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
@@ -83,6 +90,11 @@ export class ArcadeRoom extends DurableObject<Env> {
           serverTime: Date.now(),
           state: room.booth,
         });
+      }
+      if (room.converge?.deadline != null && room.converge.deadline <= now) {
+        this.expireConvergeRound(room, now);
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        this.broadcastConvergeState(room);
       }
       await this.scheduleNextAlarm(room);
     });
@@ -193,7 +205,13 @@ export class ArcadeRoom extends DurableObject<Env> {
       return;
     }
 
+    if (parsed.data.type === 'converge_command') {
+      await this.handleConvergeCommand(ws, attachment, parsed.data);
+      return;
+    }
+
     if (
+      parsed.data.type === 'set_game_settings' ||
       parsed.data.type === 'select_activity' ||
       parsed.data.type === 'set_ready' ||
       parsed.data.type === 'exit_activity'
@@ -405,6 +423,16 @@ export class ArcadeRoom extends DurableObject<Env> {
     player.activeConnectionId = attachment.connectionId;
     player.lastSeenAt = now;
     player.reservedUntil = null;
+    if (
+      room.converge?.phase === 'playing' &&
+      room.converge.deadline === null &&
+      room.converge.pausedRemainingMs !== null &&
+      room.players.length === 2 &&
+      room.players.every((candidate) => candidate.connected)
+    ) {
+      room.converge.deadline = now + room.converge.pausedRemainingMs;
+      room.converge.pausedRemainingMs = null;
+    }
     room.revision += 1;
     attachment.authenticated = true;
     attachment.playerId = player.id;
@@ -436,6 +464,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       players: room.players.map(playerView),
     });
     this.broadcastSnapshot(room);
+    if (room.converge) this.broadcastConvergeState(room);
   }
 
   private async markDisconnected(ws: WebSocket) {
@@ -456,6 +485,13 @@ export class ArcadeRoom extends DurableObject<Env> {
       player.activeConnectionId = null;
       player.lastSeenAt = Date.now();
       player.reservedUntil = player.lastSeenAt + DISCONNECT_GRACE_MS;
+      if (room.converge?.deadline != null) {
+        room.converge.pausedRemainingMs = Math.max(
+          1,
+          room.converge.deadline - player.lastSeenAt,
+        );
+        room.converge.deadline = null;
+      }
       if (room.booth) {
         room.booth.readyIds = [];
         room.booth.takeId = null;
@@ -466,6 +502,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
       await this.scheduleNextAlarm(room);
       this.broadcastSnapshot(room);
+      if (room.converge) this.broadcastConvergeState(room);
     });
   }
 
@@ -490,6 +527,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       if (room.players.length < 2) {
         room.activeActivity = null;
         room.activeActivityInstanceId = null;
+        delete room.converge;
       }
       room.revision += 1;
       attachment.authenticated = false;
@@ -507,7 +545,13 @@ export class ArcadeRoom extends DurableObject<Env> {
     attachment: SocketAttachment,
     command: Extract<
       ClientMessage,
-      { type: 'select_activity' | 'set_ready' | 'exit_activity' }
+      {
+        type:
+          | 'select_activity'
+          | 'set_ready'
+          | 'exit_activity'
+          | 'set_game_settings';
+      }
     >,
   ) {
     await this.ctx.blockConcurrencyWhile(async () => {
@@ -534,7 +578,24 @@ export class ArcadeRoom extends DurableObject<Env> {
         return;
       }
 
-      if (command.type === 'select_activity') {
+      if (command.type === 'set_game_settings') {
+        if (player.selectedActivity !== command.activityId) {
+          this.sendCommandRejected(ws, command.requestId, 'not_in_activity');
+          return;
+        }
+        const previous = room.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS;
+        if (
+          previous.timeLimitSeconds === command.settings.timeLimitSeconds &&
+          previous.mode === command.settings.mode &&
+          previous.maxRounds === command.settings.maxRounds
+        )
+          return;
+        room.convergeSettings = command.settings;
+        for (const candidate of room.players) {
+          if (candidate.selectedActivity === command.activityId)
+            candidate.ready = false;
+        }
+      } else if (command.type === 'select_activity') {
         const previousActivity = player.selectedActivity;
         if (previousActivity && previousActivity !== command.activityId) {
           for (const candidate of room.players) {
@@ -563,6 +624,7 @@ export class ArcadeRoom extends DurableObject<Env> {
         room.activeActivity = null;
         room.activeActivityInstanceId = null;
         delete room.booth;
+        delete room.converge;
       }
 
       room.revision += 1;
@@ -578,6 +640,12 @@ export class ArcadeRoom extends DurableObject<Env> {
       if (bothReady) {
         room.activeActivity = command.activityId;
         room.activeActivityInstanceId = crypto.randomUUID();
+        if (command.activityId === 'converge') {
+          room.converge = this.newConvergeState(
+            room.activeActivityInstanceId,
+            room.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
+          );
+        }
         started = true;
       }
       await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
@@ -591,6 +659,8 @@ export class ArcadeRoom extends DurableObject<Env> {
           activityInstanceId: room.activeActivityInstanceId,
           revision: room.revision,
         });
+        if (command.activityId === 'converge')
+          this.broadcastConvergeState(room);
       }
     });
   }
@@ -602,6 +672,7 @@ export class ArcadeRoom extends DurableObject<Env> {
         : [],
     );
     if (room.booth?.autoStartAt != null) deadlines.push(room.booth.autoStartAt);
+    if (room.converge?.deadline != null) deadlines.push(room.converge.deadline);
     if (deadlines.length === 0) {
       await this.ctx.storage.deleteAlarm();
       return;
@@ -623,6 +694,7 @@ export class ArcadeRoom extends DurableObject<Env> {
   private broadcastSnapshot(room: StoredRoom) {
     const message: ServerMessage = {
       type: 'room_snapshot',
+      convergeSettings: room.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
       protocolVersion: PROTOCOL_VERSION,
       serverTime: Date.now(),
       roomCode: room.roomCode,
@@ -632,6 +704,167 @@ export class ArcadeRoom extends DurableObject<Env> {
       activityInstanceId: room.activeActivityInstanceId,
     };
     this.broadcast(message);
+  }
+
+  private newConvergeState(
+    instanceId: string,
+    settings: StoredRoom['convergeSettings'],
+  ): ConvergeState {
+    return {
+      instanceId,
+      settings: settings ?? DEFAULT_CONVERGE_SETTINGS,
+      phase: 'playing',
+      round: 1,
+      baseWords: null,
+      submittedIds: [],
+      deadline: null,
+      pausedRemainingMs: null,
+      history: [],
+      replayReadyIds: [],
+      submissions: {},
+    };
+  }
+
+  private broadcastConvergeState(
+    room: StoredRoom,
+    requestId = crypto.randomUUID(),
+  ) {
+    if (!room.converge) return;
+    const message: ServerMessage = {
+      type: 'converge_state',
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      serverTime: Date.now(),
+      state: publicConvergeState(room.converge),
+    };
+    this.broadcast(message);
+  }
+
+  private expireConvergeRound(room: StoredRoom, now: number) {
+    const state = room.converge;
+    if (!state || state.phase !== 'playing') return;
+    state.history.push({
+      round: state.round,
+      words: null,
+      matched: false,
+      timedOut: true,
+    });
+    state.submissions = {};
+    state.submittedIds = [];
+    state.deadline = null;
+    state.pausedRemainingMs = null;
+    if (
+      state.settings.mode === 'limited' &&
+      state.round >= state.settings.maxRounds
+    ) {
+      state.phase = 'lost';
+      return;
+    }
+    state.round += 1;
+    state.deadline = now + state.settings.timeLimitSeconds * 1000;
+  }
+
+  private async handleConvergeCommand(
+    ws: WebSocket,
+    attachment: SocketAttachment,
+    message: Extract<ClientMessage, { type: 'converge_command' }>,
+  ) {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+      const player = room?.players.find(
+        (candidate) => candidate.id === attachment.playerId,
+      );
+      if (!room || !player) {
+        this.sendCommandRejected(ws, message.requestId, 'player_not_found');
+        return;
+      }
+      const state = room.converge;
+      if (
+        room.activeActivity !== 'converge' ||
+        room.activeActivityInstanceId !== message.instanceId ||
+        player.selectedActivity !== 'converge' ||
+        !state
+      ) {
+        this.sendCommandRejected(ws, message.requestId, 'not_in_activity');
+        return;
+      }
+      if (message.command.kind === 'sync') {
+        this.send(ws, {
+          type: 'converge_state',
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: message.requestId,
+          serverTime: Date.now(),
+          state: publicConvergeState(state),
+        });
+        return;
+      }
+      if (message.command.kind === 'return_to_setup') {
+        if (state.phase === 'playing') {
+          this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+          return;
+        }
+        room.convergeSettings = state.settings;
+        room.activeActivity = null;
+        room.activeActivityInstanceId = null;
+        delete room.converge;
+        for (const candidate of room.players) candidate.ready = false;
+        room.revision += 1;
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        await this.scheduleNextAlarm(room);
+        this.broadcastSnapshot(room);
+        return;
+      } else {
+        if (state.phase !== 'playing') {
+          this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+          return;
+        }
+        const now = Date.now();
+        if (state.deadline !== null && state.deadline <= now) {
+          this.expireConvergeRound(room, now);
+          this.sendCommandRejected(ws, message.requestId, 'stale_round');
+        } else if (message.command.round !== state.round) {
+          this.sendCommandRejected(ws, message.requestId, 'stale_round');
+          return;
+        } else if (state.submissions[player.id]) {
+          this.sendCommandRejected(ws, message.requestId, 'already_submitted');
+          return;
+        } else {
+          state.submissions[player.id] = message.command.word;
+          state.submittedIds = Object.keys(state.submissions);
+          if (
+            room.players.every((candidate) => state.submissions[candidate.id])
+          ) {
+            const words = room.players.map(
+              (candidate) => state.submissions[candidate.id],
+            ) as [string, string];
+            const matched = convergeWordsMatch(words[0], words[1]);
+            state.history.push({
+              round: state.round,
+              words,
+              matched,
+              timedOut: false,
+            });
+            state.submissions = {};
+            state.submittedIds = [];
+            state.deadline = null;
+            if (matched) state.phase = 'won';
+            else if (
+              state.settings.mode === 'limited' &&
+              state.round >= state.settings.maxRounds
+            )
+              state.phase = 'lost';
+            else {
+              state.baseWords = words;
+              state.round += 1;
+              state.deadline = now + state.settings.timeLimitSeconds * 1000;
+            }
+          }
+        }
+      }
+      await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+      await this.scheduleNextAlarm(room);
+      this.broadcastConvergeState(room, message.requestId);
+    });
   }
 
   private async handleBoothCommand(

@@ -1,3 +1,9 @@
+import { isConvergeSettings, type ConvergeSettings } from './game-settings';
+import {
+  isConvergeCommand,
+  type ConvergeCommand,
+  type ConvergePublicState,
+} from './converge';
 import {
   isBoothCommand,
   type BoothCommand,
@@ -57,6 +63,20 @@ export type CreateRoomError = {
 };
 
 export type ClientMessage =
+  | {
+      type: 'converge_command';
+      protocolVersion: typeof PROTOCOL_VERSION;
+      requestId: string;
+      instanceId: string;
+      command: ConvergeCommand;
+    }
+  | {
+      type: 'set_game_settings';
+      protocolVersion: typeof PROTOCOL_VERSION;
+      requestId: string;
+      activityId: 'converge';
+      settings: ConvergeSettings;
+    }
   | {
       type: 'booth_command';
       protocolVersion: typeof PROTOCOL_VERSION;
@@ -121,6 +141,11 @@ type ServerEnvelope = {
 
 export type ServerMessage =
   | (ServerEnvelope & {
+      type: 'converge_state';
+      requestId: string;
+      state: ConvergePublicState;
+    })
+  | (ServerEnvelope & {
       type: 'booth_state';
       requestId: string;
       state: BoothState;
@@ -158,6 +183,7 @@ export type ServerMessage =
     })
   | (ServerEnvelope & {
       type: 'room_snapshot';
+      convergeSettings?: ConvergeSettings;
       roomCode: string;
       revision: number;
       players: PlayerView[];
@@ -177,7 +203,10 @@ export type ServerMessage =
       reason:
         | 'not_in_activity'
         | 'activity_already_started'
-        | 'player_not_found';
+        | 'player_not_found'
+        | 'stale_round'
+        | 'already_submitted'
+        | 'game_not_playing';
     })
   | (ServerEnvelope & {
       type: 'protocol_error';
@@ -289,6 +318,35 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
     return { success: false, error: 'invalid_message' };
 
   switch (value.type) {
+    case 'converge_command':
+      if (
+        hasOnlyKeys(value, [
+          'type',
+          'protocolVersion',
+          'requestId',
+          'instanceId',
+          'command',
+        ]) &&
+        typeof value.instanceId === 'string' &&
+        value.instanceId.length <= 80 &&
+        isConvergeCommand(value.command)
+      )
+        return { success: true, data: value as ClientMessage };
+      break;
+    case 'set_game_settings':
+      if (
+        hasOnlyKeys(value, [
+          'type',
+          'protocolVersion',
+          'requestId',
+          'activityId',
+          'settings',
+        ]) &&
+        value.activityId === 'converge' &&
+        isConvergeSettings(value.settings)
+      )
+        return { success: true, data: value as ClientMessage };
+      break;
     case 'booth_command':
       if (
         hasOnlyKeys(value, [

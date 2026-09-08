@@ -1,7 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  DEFAULT_CONVERGE_SETTINGS,
+  type ConvergeSettings,
+} from '@/lib/game-settings';
 import type { BoothCommand } from '@/lib/photo-booth';
+import type { ConvergeCommand, ConvergePublicState } from '@/lib/converge';
 import {
   PROTOCOL_VERSION,
   type ActivityId,
@@ -105,12 +110,17 @@ export function useRoomConnection() {
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [selfId, setSelfId] = useState<string | null>(null);
+  const [convergeSettings, setConvergeSettings] = useState<ConvergeSettings>(
+    DEFAULT_CONVERGE_SETTINGS,
+  );
   const [players, setPlayers] = useState<PlayerView[]>([]);
   const [activeActivity, setActiveActivity] = useState<ActivityId | null>(null);
   const [activityInstanceId, setActivityInstanceId] = useState<string | null>(
     null,
   );
   const boothListeners = useRef(new Set<(message: ServerMessage) => void>());
+  const [convergeState, setConvergeState] =
+    useState<ConvergePublicState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const credentialsRef = useRef<ConnectionCredentials | null>(null);
@@ -177,6 +187,10 @@ export function useRoomConnection() {
           for (const listener of boothListeners.current) listener(message);
           return;
         }
+        if (message.type === 'converge_state') {
+          setConvergeState(message.state);
+          return;
+        }
 
         if (message.type === 'join_rejected') {
           terminalCloseRef.current = true;
@@ -240,8 +254,12 @@ export function useRoomConnection() {
         ) {
           revisionRef.current = message.revision;
           setPlayers(message.players);
+          setConvergeSettings(
+            message.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
+          );
           setActiveActivity(message.activeActivity);
           setActivityInstanceId(message.activityInstanceId ?? null);
+          if (message.activeActivity !== 'converge') setConvergeState(null);
           return;
         }
 
@@ -253,13 +271,16 @@ export function useRoomConnection() {
         }
 
         if (message.type === 'command_rejected') {
-          setError(
-            message.reason === 'not_in_activity'
-              ? 'Choose that activity before changing your ready state.'
-              : message.reason === 'activity_already_started'
-                ? 'An activity has already started in this arcade.'
-                : 'Your player session is no longer available.',
-          );
+          const commandErrors: Record<typeof message.reason, string> = {
+            not_in_activity: 'Choose that activity before sending a command.',
+            activity_already_started:
+              'An activity has already started in this arcade.',
+            player_not_found: 'Your player session is no longer available.',
+            stale_round: 'That round has ended. Try the current round.',
+            already_submitted: 'Your word is already locked in.',
+            game_not_playing: 'That action is not available right now.',
+          };
+          setError(commandErrors[message.reason]);
         }
       });
 
@@ -422,6 +443,7 @@ export function useRoomConnection() {
     setSelfId(null);
     setPlayers([]);
     setActiveActivity(null);
+    setConvergeState(null);
     setError(null);
     setStatus('idle');
   }, [clearTimers]);
@@ -429,6 +451,11 @@ export function useRoomConnection() {
   const sendActivityCommand = useCallback(
     (
       command:
+        | {
+            type: 'set_game_settings';
+            activityId: 'converge';
+            settings: ConvergeSettings;
+          }
         | { type: 'select_activity'; activityId: ActivityId }
         | { type: 'set_ready'; activityId: ActivityId; ready: boolean }
         | { type: 'exit_activity'; activityId: ActivityId },
@@ -471,7 +498,32 @@ export function useRoomConnection() {
     );
   }, []);
 
+  const sendConverge = useCallback(
+    (instanceId: string, command: ConvergeCommand) => {
+      if (socketRef.current?.readyState !== WebSocket.OPEN) return;
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'converge_command',
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId(),
+          instanceId,
+          command,
+        } satisfies ClientMessage),
+      );
+    },
+    [],
+  );
+
   return {
+    convergeState,
+    sendConverge,
+    convergeSettings,
+    updateConvergeSettings: (settings: ConvergeSettings) =>
+      sendActivityCommand({
+        type: 'set_game_settings',
+        activityId: 'converge',
+        settings,
+      }),
     activityInstanceId,
     subscribeBooth,
     sendBooth,
