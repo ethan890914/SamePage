@@ -1,5 +1,5 @@
 import { GameEntry } from '@/components/games/game-entry';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { ConvergeSettings } from '@/lib/game-settings';
 import { Check, Copy, LogOut, X } from 'lucide-react';
 import Image from 'next/image';
@@ -12,6 +12,8 @@ const positions: Record<ActivityId, string> = {
   'pattern-race': 'station-pattern',
   'photo-booth': 'station-photo',
 };
+
+const WALK_DURATION_MS = 760;
 
 type Props = {
   boothCamera: ReactNode;
@@ -40,10 +42,12 @@ type Props = {
 function PlayerSprite({
   player,
   isSelf,
+  isWalking,
   slot,
 }: {
   player: PlayerView;
   isSelf: boolean;
+  isWalking: boolean;
   slot: number;
 }) {
   const position = player.selectedActivity
@@ -51,7 +55,7 @@ function PlayerSprite({
     : `spawn-${slot}`;
   return (
     <div
-      className={`lobby-player lobby-player--${slot} ${position} ${!player.connected ? 'is-offline' : ''}`}
+      className={`lobby-player lobby-player--${slot} ${position} ${isWalking ? 'is-walking' : ''} ${!player.connected ? 'is-offline' : ''}`}
     >
       <span
         className={`avatar-sprite avatar-art ${player.avatarId}`}
@@ -95,9 +99,33 @@ export function ArcadeLobby({
   const selectedActivity = activities.find(
     (activity) => activity.id === self?.selectedActivity,
   );
+  const [enteredActivityId, setEnteredActivityId] = useState<ActivityId | null>(
+    null,
+  );
   const startedActivity = activities.find(
     (activity) => activity.id === activeActivity,
   );
+  const isWalking = Boolean(
+    selectedActivity && enteredActivityId !== selectedActivity.id,
+  );
+  const showActivityEntry = Boolean(
+    selectedActivity && enteredActivityId === selectedActivity.id,
+  );
+
+  useEffect(() => {
+    if (!selectedActivity) return;
+
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+    const timeout = window.setTimeout(
+      () => setEnteredActivityId(selectedActivity.id),
+      reducedMotion ? 0 : WALK_DURATION_MS,
+    );
+
+    return () => window.clearTimeout(timeout);
+  }, [selectedActivity]);
+
   return (
     <section
       className="lobby-shell"
@@ -110,7 +138,7 @@ export function ArcadeLobby({
         selectedActivity || startedActivity ? undefined : 'lobby-title'
       }
     >
-      {!selectedActivity && !startedActivity && (
+      {!showActivityEntry && !startedActivity && (
         <header className="lobby-toolbar">
           <div>
             <p className="pixel-kicker">Your shared place</p>
@@ -146,7 +174,7 @@ export function ArcadeLobby({
           </button>
         </div>
       )}
-      {selectedActivity && !activeActivity ? (
+      {selectedActivity && showActivityEntry && !activeActivity ? (
         <GameEntry
           camera={boothCamera}
           cameraBusy={boothCameraBusy}
@@ -188,7 +216,12 @@ export function ArcadeLobby({
                   type="button"
                   disabled={status !== 'connected' || Boolean(activeActivity)}
                   aria-pressed={selected}
-                  onClick={() => onSelectActivity(activity.id)}
+                  onClick={() => {
+                    if (selectedActivity?.id !== activity.id) {
+                      setEnteredActivityId(null);
+                    }
+                    onSelectActivity(activity.id);
+                  }}
                 >
                   <span className="station-screen" aria-hidden="true">
                     <i />
@@ -212,6 +245,7 @@ export function ArcadeLobby({
               key={player.id}
               player={player}
               isSelf={player.id === selfId}
+              isWalking={player.id === selfId && isWalking}
               slot={index}
             />
           ))}
@@ -223,7 +257,11 @@ export function ArcadeLobby({
               <span>Waiting for player two</span>
             </div>
           )}
-          <p className="arcade-hint">Choose a station to walk over</p>
+          <p className="arcade-hint" aria-live="polite">
+            {isWalking && selectedActivity
+              ? `Walking to ${selectedActivity.name}…`
+              : 'Choose a station to walk over'}
+          </p>
 
           {startedActivity ? (
             <output className="activity-started-panel">
@@ -243,85 +281,6 @@ export function ArcadeLobby({
                 </PixelButton>
               }
             </output>
-          ) : selectedActivity ? (
-            <aside
-              className="activity-waiting-panel"
-              aria-label={`${selectedActivity.name} waiting room`}
-            >
-              <header>
-                <div>
-                  <p className="pixel-kicker">Waiting room</p>
-                  <h2>{selectedActivity.name}</h2>
-                </div>
-                <span className="waiting-count">
-                  {
-                    players.filter(
-                      (player) =>
-                        player.selectedActivity === selectedActivity.id,
-                    ).length
-                  }
-                  /2 here
-                </span>
-              </header>
-              <div className="waiting-players">
-                {players.map((player) => {
-                  const isHere =
-                    player.selectedActivity === selectedActivity.id;
-                  return (
-                    <div
-                      className={`waiting-player ${isHere ? 'is-here' : ''}`}
-                      key={player.id}
-                    >
-                      <span
-                        className={`waiting-avatar avatar-art ${player.avatarId}`}
-                        aria-hidden="true"
-                      />
-                      <span>
-                        <strong>
-                          {player.name}
-                          {player.id === selfId ? ' · you' : ''}
-                        </strong>
-                        <small>
-                          {!isHere
-                            ? 'Not here yet'
-                            : player.ready
-                              ? 'Ready!'
-                              : 'Getting ready'}
-                        </small>
-                      </span>
-                      <span
-                        className={`ready-light ${isHere && player.ready ? 'is-ready' : ''}`}
-                        aria-hidden="true"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="waiting-message">
-                {players.filter(
-                  (player) => player.selectedActivity === selectedActivity.id,
-                ).length === 2
-                  ? 'You’re both here. The activity starts when you’re both ready.'
-                  : 'Waiting for your person to choose this activity.'}
-              </p>
-              <div className="waiting-actions">
-                <PixelButton
-                  type="button"
-                  variant={self?.ready ? 'secondary' : 'primary'}
-                  disabled={status !== 'connected'}
-                  onClick={() => onSetReady(selectedActivity.id, !self?.ready)}
-                >
-                  {self?.ready ? 'Cancel ready' : 'I’m ready'}
-                </PixelButton>
-                <PixelButton
-                  type="button"
-                  disabled={status !== 'connected'}
-                  onClick={() => onExitActivity(selectedActivity.id)}
-                >
-                  Exit
-                </PixelButton>
-              </div>
-            </aside>
           ) : null}
         </div>
       )}

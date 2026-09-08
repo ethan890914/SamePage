@@ -715,6 +715,9 @@
     height: 4.8rem;
     filter: drop-shadow(3px 4px 0 rgb(46 24 16 / 45%));
   }
+  .lobby-player.is-walking .avatar-sprite {
+    animation: avatar-walk-bob 160ms steps(2, end) infinite;
+  }
   .avatar-label {
     margin-top: 0.45rem;
     max-width: 9rem;
@@ -759,7 +762,6 @@
     white-space: nowrap;
   }
 
-  .activity-waiting-panel,
   .activity-started-panel {
     position: absolute;
     z-index: 8;
@@ -774,96 +776,11 @@
       6px 6px 0 rgb(38 19 15 / 65%),
       inset 0 0 0 2px rgb(255 248 233 / 7%);
   }
-  .activity-waiting-panel > header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding-bottom: 0.65rem;
-    border-bottom: 2px solid #956c5e;
-  }
-  .activity-waiting-panel h2,
   .activity-started-panel h2 {
     margin-top: 0.15rem;
     font-family: 'Pixelify Sans', var(--font-geist-mono);
     font-size: 1.5rem;
     font-weight: 700;
-  }
-  .waiting-count {
-    border: 2px solid var(--pixel-yellow);
-    background: #2c1c20;
-    padding: 0.3rem 0.45rem;
-    color: #fff8e9;
-    box-shadow: 2px 2px 0 #160d10;
-    font-family: var(--font-geist-mono);
-    font-size: 0.75rem;
-    font-weight: 800;
-    white-space: nowrap;
-  }
-  .waiting-players {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
-    margin-top: 0.75rem;
-  }
-  .waiting-player {
-    display: grid;
-    min-width: 0;
-    grid-template-columns: 2rem minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.45rem;
-    border: 2px solid #725146;
-    background: #38252a;
-    padding: 0.4rem;
-    opacity: 0.66;
-  }
-  .waiting-player.is-here {
-    border-color: #8fc8ad;
-    opacity: 1;
-  }
-  .waiting-avatar {
-    width: 1.8rem;
-    height: 2.7rem;
-  }
-  .waiting-player strong,
-  .waiting-player small {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .waiting-player strong {
-    font-family: var(--font-geist-mono);
-    font-size: 0.72rem;
-  }
-  .waiting-player small {
-    margin-top: 0.15rem;
-    color: #f0d9c2;
-    font-size: 0.64rem;
-  }
-  .ready-light {
-    width: 0.55rem;
-    height: 0.55rem;
-    background: #956c5e;
-    box-shadow: 0 0 0 2px #27171a;
-  }
-  .ready-light.is-ready {
-    background: #8fc8ad;
-    box-shadow:
-      0 0 0 2px #294c3e,
-      0 0 8px #8fc8ad;
-  }
-  .waiting-message {
-    margin-top: 0.65rem;
-    color: #f0d9c2;
-    font-size: 0.78rem;
-    line-height: 1.4;
-  }
-  .waiting-actions {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.55rem;
-    margin-top: 0.75rem;
   }
   .activity-started-panel {
     left: 50%;
@@ -1002,12 +919,21 @@
   }
 }
 
+@keyframes avatar-walk-bob {
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pixel-status span {
     animation: none;
   }
   .lobby-player {
     transition: none;
+  }
+  .lobby-player.is-walking .avatar-sprite {
+    animation: none;
   }
 }
 
@@ -1067,21 +993,6 @@
   .lobby-player.spawn-1 {
     left: 61%;
     top: 78%;
-  }
-  .activity-waiting-panel {
-    right: 3%;
-    bottom: 2%;
-    width: 94%;
-  }
-  .waiting-players {
-    grid-template-columns: 1fr;
-  }
-  .waiting-player {
-    grid-template-columns: 1.8rem minmax(0, 1fr) auto;
-  }
-  .waiting-avatar {
-    width: 1.5rem;
-    height: 2.25rem;
   }
 }
 
