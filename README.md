@@ -35,7 +35,10 @@ Players can choose a spot in the shared home, see each other's avatar move to it
 enter its shared waiting room, and toggle ready. Switching activities or exiting
 clears the affected ready state for both players. When both players choose the
 same activity and become ready, both clients receive the same activity instance.
-The individual game screens are the next product slice.
+Photo Booth opens a shared camera experience with frame selection, switchable
+left/right positions, and four photos with a 10-second countdown before each shot.
+Both players can download their combined strip. See `docs/photo-booth.md` for
+camera networking and TURN relay setup. The word games are the next product slice.
 
 Run the realtime integration check with:
 
@@ -59,5 +62,5 @@ front of both the frontend and realtime Worker routes.
 - `docs/architecture.md` — intended V1 boundaries and delivery sequence
 - `AGENT.md` — complete V1 product specification
 
-The room, reconnect, and shared activity-waiting flows are implemented. The game
-loops and photo booth are the next implementation slices.
+The room, reconnect, shared activity-waiting flows, and photo booth are implemented.
+The word-game loops are the next implementation slices.

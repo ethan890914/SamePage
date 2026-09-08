@@ -6,6 +6,8 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "predev": "node scripts/prepare-booth-vision.mjs",
+    "prebuild": "node scripts/prepare-booth-vision.mjs",
     "dev": "vinext dev",
     "dev:realtime": "WRANGLER_WRITE_LOGS=false WRANGLER_LOG_PATH=.wrangler/logs wrangler dev --config wrangler.realtime.jsonc",
     "build": "vinext build",
@@ -19,6 +21,7 @@
   "dependencies": {
     "@base-ui/react": "1.7.0",
     "@fontsource/pixelify-sans": "^5.3.0",
+    "@mediapipe/tasks-vision": "1.0.1",
     "@shadcn/react": "0.3.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",

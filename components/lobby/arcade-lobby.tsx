@@ -178,7 +178,19 @@ export function ArcadeLobby({
           <output className="activity-started-panel">
             <p className="pixel-kicker">Both ready!</p>
             <h2>{startedActivity.name}</h2>
-            <p>You’re together. Taking you both into the activity…</p>
+            <p>
+              {startedActivity.id === 'photo-booth'
+                ? 'Waiting for both of you to reconnect to the booth…'
+                : 'You’re together. Taking you both into the activity…'}
+            </p>
+            {startedActivity.id === 'photo-booth' && (
+              <PixelButton
+                disabled={status !== 'connected'}
+                onClick={() => onExitActivity('photo-booth')}
+              >
+                Back to lobby
+              </PixelButton>
+            )}
           </output>
         ) : selectedActivity ? (
           <aside

@@ -1,4 +1,5 @@
 import type { ActivityId, AvatarId, PlayerView } from '../lib/protocol';
+import type { BoothState } from '../lib/photo-booth';
 
 export const ROOM_STORAGE_KEY = 'room';
 export const CREATOR_RESERVATION_MS = 60_000;
@@ -18,6 +19,7 @@ export type RoomPlayer = {
 };
 
 export type StoredRoom = {
+  booth?: BoothState;
   schemaVersion: 1;
   creationRequestId: string;
   roomCode: string;

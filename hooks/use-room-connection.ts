@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { BoothCommand } from '@/lib/photo-booth';
 import {
   PROTOCOL_VERSION,
   type ActivityId,
@@ -106,6 +107,10 @@ export function useRoomConnection() {
   const [selfId, setSelfId] = useState<string | null>(null);
   const [players, setPlayers] = useState<PlayerView[]>([]);
   const [activeActivity, setActiveActivity] = useState<ActivityId | null>(null);
+  const [activityInstanceId, setActivityInstanceId] = useState<string | null>(
+    null,
+  );
+  const boothListeners = useRef(new Set<(message: ServerMessage) => void>());
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const credentialsRef = useRef<ConnectionCredentials | null>(null);
@@ -166,6 +171,10 @@ export function useRoomConnection() {
         try {
           message = JSON.parse(String(event.data)) as ServerMessage;
         } catch {
+          return;
+        }
+        if (message.type.startsWith('booth_')) {
+          for (const listener of boothListeners.current) listener(message);
           return;
         }
 
@@ -232,12 +241,14 @@ export function useRoomConnection() {
           revisionRef.current = message.revision;
           setPlayers(message.players);
           setActiveActivity(message.activeActivity);
+          setActivityInstanceId(message.activityInstanceId ?? null);
           return;
         }
 
         if (message.type === 'activity_started') {
           revisionRef.current = Math.max(revisionRef.current, message.revision);
           setActiveActivity(message.activityId);
+          setActivityInstanceId(message.activityInstanceId);
           return;
         }
 
@@ -296,7 +307,7 @@ export function useRoomConnection() {
         }
       });
     },
-    [clearTimers],
+    [clearTimers, boothListeners],
   );
 
   useEffect(() => {
@@ -438,7 +449,32 @@ export function useRoomConnection() {
     [status],
   );
 
+  const subscribeBooth = useCallback(
+    (listener: (message: ServerMessage) => void) => {
+      boothListeners.current.add(listener);
+      return () => {
+        boothListeners.current.delete(listener);
+      };
+    },
+    [],
+  );
+  const sendBooth = useCallback((instanceId: string, command: BoothCommand) => {
+    if (socketRef.current?.readyState !== WebSocket.OPEN) return;
+    socketRef.current.send(
+      JSON.stringify({
+        type: 'booth_command',
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: requestId(),
+        instanceId,
+        command,
+      } satisfies ClientMessage),
+    );
+  }, []);
+
   return {
+    activityInstanceId,
+    subscribeBooth,
+    sendBooth,
     status,
     roomCode,
     selfId,

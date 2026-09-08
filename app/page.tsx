@@ -5,6 +5,7 @@ import { ArcadeLobby } from '@/components/lobby/arcade-lobby';
 import { EntryScreen, type EntryMode } from '@/components/lobby/entry-screen';
 import { PixelStatus } from '@/components/pixel/pixel-status';
 import { useRoomConnection } from '@/hooks/use-room-connection';
+import { PhotoBooth } from '@/components/photo-booth/photo-booth';
 import { isAvatarId, type AvatarId } from '@/lib/protocol';
 
 export default function Home() {
@@ -75,21 +76,40 @@ export default function Home() {
         </header>
 
         {inRoom && room.roomCode && room.selfId ? (
-          <ArcadeLobby
-            activeActivity={room.activeActivity}
-            copied={copied}
-            error={room.error}
-            players={room.players}
-            roomCode={room.roomCode}
-            selfId={room.selfId}
-            status={room.status}
-            onCopyRoomCode={copyRoomCode}
-            onClearError={room.clearError}
-            onExitActivity={room.exitActivity}
-            onLeave={room.leaveRoom}
-            onSetReady={room.setReady}
-            onSelectActivity={room.selectActivity}
-          />
+          room.activeActivity === 'photo-booth' &&
+          room.activityInstanceId &&
+          room.status === 'connected' &&
+          room.players.length === 2 &&
+          room.players.every((player) => player.connected) ? (
+            <PhotoBooth
+              key={room.activityInstanceId}
+              selfId={room.selfId}
+              peerId={
+                room.players.find((player) => player.id !== room.selfId)!.id
+              }
+              instanceId={room.activityInstanceId}
+              players={room.players}
+              send={room.sendBooth}
+              subscribe={room.subscribeBooth}
+              onExit={() => room.exitActivity('photo-booth')}
+            />
+          ) : (
+            <ArcadeLobby
+              activeActivity={room.activeActivity}
+              copied={copied}
+              error={room.error}
+              players={room.players}
+              roomCode={room.roomCode}
+              selfId={room.selfId}
+              status={room.status}
+              onCopyRoomCode={copyRoomCode}
+              onClearError={room.clearError}
+              onExitActivity={room.exitActivity}
+              onLeave={room.leaveRoom}
+              onSetReady={room.setReady}
+              onSelectActivity={room.selectActivity}
+            />
+          )
         ) : (
           <EntryScreen
             busy={busy}

@@ -3,3 +3,9 @@ ROOM_PASSWORD_PEPPER=replace-for-local-development
 
 # Comma-separated browser origins. Defaults are added when origin checks land.
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+
+# Optional TURN relay for camera connections across restrictive networks.
+# Use a TURN service supporting temporary HMAC-SHA1 (coturn REST) credentials.
+# Keep the shared secret on the Worker; never use a NEXT_PUBLIC_ variable.
+# TURN_URLS=turn:turn.example.com:3478,turns:turn.example.com:5349
+# TURN_SHARED_SECRET=your-turn-service-shared-secret

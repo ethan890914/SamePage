@@ -1,3 +1,8 @@
+import {
+  isBoothCommand,
+  type BoothCommand,
+  type BoothState,
+} from './photo-booth';
 export const PROTOCOL_VERSION = 1 as const;
 
 export const activityIds = ['converge', 'pattern-race', 'photo-booth'] as const;
@@ -52,6 +57,13 @@ export type CreateRoomError = {
 };
 
 export type ClientMessage =
+  | {
+      type: 'booth_command';
+      protocolVersion: typeof PROTOCOL_VERSION;
+      requestId: string;
+      instanceId: string;
+      command: BoothCommand;
+    }
   | {
       type: 'join_room';
       protocolVersion: typeof PROTOCOL_VERSION;
@@ -109,6 +121,21 @@ type ServerEnvelope = {
 
 export type ServerMessage =
   | (ServerEnvelope & {
+      type: 'booth_state';
+      requestId: string;
+      state: BoothState;
+    })
+  | (ServerEnvelope & {
+      type: 'booth_signal';
+      instanceId: string;
+      fromId: string;
+      signal: {
+        type: 'offer' | 'answer' | 'candidate' | 'hello' | 'restart';
+        value: string;
+      };
+    })
+  | (ServerEnvelope & { type: 'booth_ice'; iceServers: RTCIceServer[] })
+  | (ServerEnvelope & {
       type: 'join_accepted';
       requestId: string;
       roomCode: string;
@@ -135,6 +162,7 @@ export type ServerMessage =
       revision: number;
       players: PlayerView[];
       activeActivity: ActivityId | null;
+      activityInstanceId?: string | null;
     })
   | (ServerEnvelope & {
       type: 'activity_started';
@@ -261,6 +289,21 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
     return { success: false, error: 'invalid_message' };
 
   switch (value.type) {
+    case 'booth_command':
+      if (
+        hasOnlyKeys(value, [
+          'type',
+          'protocolVersion',
+          'requestId',
+          'instanceId',
+          'command',
+        ]) &&
+        typeof value.instanceId === 'string' &&
+        value.instanceId.length <= 80 &&
+        isBoothCommand(value.command)
+      )
+        return { success: true, data: value as ClientMessage };
+      break;
     case 'join_room':
       if (
         hasOnlyKeys(value, [

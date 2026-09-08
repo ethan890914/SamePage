@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHmac } from 'node:crypto';
 
 const port = 8790;
 const httpBase = `http://127.0.0.1:${port}`;
@@ -21,6 +22,10 @@ const worker = spawn(
     'ROOM_PASSWORD_PEPPER:realtime-smoke-test-pepper',
     '--var',
     'ALLOWED_ORIGINS:http://localhost:3000',
+    '--var',
+    'TURN_URLS:turn:relay.example.com:3478',
+    '--var',
+    'TURN_SHARED_SECRET:smoke-turn-secret',
     '--log-level',
     'error',
     '--show-interactive-dev-session=false',
@@ -257,6 +262,260 @@ try {
   if (firstStart.activityInstanceId !== secondStart.activityInstanceId)
     throw new Error('Players received different activity instances');
 
+  async function snapshotCommand(socket, type, fields, predicate) {
+    const response = waitForMessage(
+      socket,
+      (m) => m.type === 'room_snapshot' && predicate(m),
+    );
+    socket.send(JSON.stringify(command(type, fields)));
+    return response;
+  }
+  await snapshotCommand(
+    creator.socket,
+    'exit_activity',
+    { activityId: 'converge' },
+    (m) => m.activeActivity === null,
+  );
+  await snapshotCommand(
+    creator.socket,
+    'select_activity',
+    { activityId: 'photo-booth' },
+    (m) =>
+      m.players.some(
+        (p) => p.id === created.selfId && p.selectedActivity === 'photo-booth',
+      ),
+  );
+  await snapshotCommand(
+    second.socket,
+    'select_activity',
+    { activityId: 'photo-booth' },
+    (m) => m.players.every((p) => p.selectedActivity === 'photo-booth'),
+  );
+  await snapshotCommand(
+    creator.socket,
+    'set_ready',
+    { activityId: 'photo-booth', ready: true },
+    (m) => m.players.some((p) => p.id === created.selfId && p.ready),
+  );
+  const boothStarted = waitForMessage(
+    creator.socket,
+    (m) => m.type === 'activity_started',
+  );
+  second.socket.send(
+    JSON.stringify(
+      command('set_ready', { activityId: 'photo-booth', ready: true }),
+    ),
+  );
+  const { activityInstanceId: instanceId } = await boothStarted;
+  async function boothCommand(socket, value) {
+    const payload = command('booth_command', { instanceId, command: value });
+    const response = waitForMessage(
+      socket,
+      (m) => m.type === 'booth_state' && m.requestId === payload.requestId,
+    );
+    socket.send(JSON.stringify(payload));
+    return (await response).state;
+  }
+  const ice = waitForMessage(creator.socket, (m) => m.type === 'booth_ice');
+  const initial = await boothCommand(creator.socket, { kind: 'sync' });
+  const iceConfig = await ice;
+  if (!iceConfig.iceServers.length || initial.leftId !== created.selfId)
+    throw new Error('Booth initialization failed');
+  const relay = iceConfig.iceServers[1];
+  if (
+    !relay ||
+    relay.credential !==
+      createHmac('sha1', 'smoke-turn-secret')
+        .update(relay.username)
+        .digest('base64') ||
+    Number(relay.username.split(':')[0]) < Date.now() / 1000 + 3500
+  )
+    throw new Error('Temporary TURN credentials are invalid');
+  const premature = await boothCommand(creator.socket, { kind: 'start' });
+  if (premature.takeId)
+    throw new Error('Booth started without both participants ready');
+  const swapped = await boothCommand(second.socket, { kind: 'swap' });
+  if (swapped.leftId !== second.message.selfId)
+    throw new Error('Booth side swap failed');
+  const framed = await boothCommand(creator.socket, {
+    kind: 'frame',
+    frame: 'hearts',
+  });
+  if (framed.frame !== 'hearts') throw new Error('Frame did not synchronize');
+  await boothCommand(creator.socket, { kind: 'ready', ready: true });
+  const manualArmed = await boothCommand(second.socket, {
+    kind: 'ready',
+    ready: true,
+  });
+  if (
+    manualArmed.autoStartAt < Date.now() + 2500 ||
+    manualArmed.autoStartAt > Date.now() + 3000 ||
+    manualArmed.takeId
+  )
+    throw new Error('Both ready did not arm a three-second countdown');
+  const started = await boothCommand(creator.socket, { kind: 'start' });
+  if (started.autoStartAt !== null)
+    throw new Error('Manual start did not clear the automatic countdown');
+  if (
+    !started.takeId ||
+    started.startsAt < Date.now() ||
+    started.startsAt > Date.now() + 1500
+  )
+    throw new Error('Invalid capture schedule');
+  const duplicateStart = await boothCommand(second.socket, { kind: 'start' });
+  if (
+    duplicateStart.takeId !== started.takeId ||
+    duplicateStart.startsAt !== started.startsAt
+  )
+    throw new Error('Duplicate start changed the active take');
+  if (
+    (await boothCommand(second.socket, { kind: 'swap' })).leftId !==
+    swapped.leftId
+  )
+    throw new Error('Sides changed during capture');
+  if (
+    (await boothCommand(second.socket, { kind: 'frame', frame: 'arcade' }))
+      .frame !== 'hearts'
+  )
+    throw new Error('Frame changed during capture');
+  const signal = waitForMessage(
+    second.socket,
+    (m) => m.type === 'booth_signal',
+  );
+  creator.socket.send(
+    JSON.stringify(
+      command('booth_command', {
+        instanceId,
+        command: {
+          kind: 'signal',
+          targetId: second.message.selfId,
+          signal: { type: 'hello', value: '' },
+        },
+      }),
+    ),
+  );
+  if ((await signal).fromId !== created.selfId)
+    throw new Error('Signal sender identity incorrect');
+  const invalid = waitForMessage(
+    creator.socket,
+    (m) => m.type === 'protocol_error',
+  );
+  creator.socket.send(
+    JSON.stringify(
+      command('booth_command', {
+        instanceId,
+        command: { kind: 'frame', frame: 'invalid' },
+      }),
+    ),
+  );
+  await invalid;
+  const stale = waitForMessage(
+    creator.socket,
+    (m) => m.type === 'command_rejected',
+  );
+  creator.socket.send(
+    JSON.stringify(
+      command('booth_command', {
+        instanceId: crypto.randomUUID(),
+        command: { kind: 'reset' },
+      }),
+    ),
+  );
+  await stale;
+  const reset = await boothCommand(second.socket, { kind: 'reset' });
+  if (reset.takeId || reset.startsAt || reset.readyIds.length)
+    throw new Error('Retake did not reset capture');
+  if (reset.frame !== 'hearts' || reset.leftId !== swapped.leftId)
+    throw new Error('Retake lost frame or positions');
+  await boothCommand(creator.socket, { kind: 'ready', ready: true });
+  const armed = await boothCommand(second.socket, {
+    kind: 'ready',
+    ready: true,
+  });
+  const readyRepeated = await boothCommand(second.socket, {
+    kind: 'ready',
+    ready: true,
+  });
+  if (readyRepeated.autoStartAt !== armed.autoStartAt)
+    throw new Error('Repeated ready postponed automatic start');
+  const unready = await boothCommand(creator.socket, {
+    kind: 'ready',
+    ready: false,
+  });
+  if (unready.autoStartAt !== null)
+    throw new Error('Cancel ready did not cancel automatic start');
+  await wait(3200);
+  const cancelled = await boothCommand(second.socket, {
+    kind: 'frame',
+    frame: 'hearts',
+  });
+  if (cancelled.takeId || cancelled.autoStartAt)
+    throw new Error('Cancelled countdown started a take');
+  const autoFirst = waitForMessage(
+    creator.socket,
+    (m) => m.type === 'booth_state' && m.state.takeId,
+  );
+  const autoSecond = waitForMessage(
+    second.socket,
+    (m) => m.type === 'booth_state' && m.state.takeId,
+  );
+  const rearmed = await boothCommand(creator.socket, {
+    kind: 'ready',
+    ready: true,
+  });
+  const [automaticFirst, automaticSecond] = await Promise.all([
+    autoFirst,
+    autoSecond,
+  ]);
+  if (
+    automaticFirst.state.takeId !== automaticSecond.state.takeId ||
+    automaticFirst.state.startsAt !== automaticSecond.state.startsAt ||
+    automaticFirst.state.autoStartAt !== null ||
+    automaticFirst.serverTime < rearmed.autoStartAt
+  )
+    throw new Error('Automatic start was early or not synchronized');
+  const lateClick = await boothCommand(second.socket, { kind: 'start' });
+  if (lateClick.takeId !== automaticFirst.state.takeId)
+    throw new Error('Late click duplicated the automatically started take');
+  await boothCommand(creator.socket, { kind: 'reset' });
+  await boothCommand(creator.socket, { kind: 'ready', ready: true });
+  await boothCommand(second.socket, { kind: 'ready', ready: true });
+  await boothCommand(creator.socket, { kind: 'start' });
+  const disconnected = waitForMessage(
+    creator.socket,
+    (m) => m.type === 'room_snapshot' && m.players.some((p) => !p.connected),
+  );
+  second.socket.close();
+  await disconnected;
+  const reclaimed = await authenticate(
+    created.roomCode,
+    command('reconnect', { sessionToken: secondToken }),
+  );
+  if (reclaimed.message.selfId !== second.message.selfId)
+    throw new Error('Reconnecting player lost their identity');
+  second.socket = reclaimed.socket;
+  const resumed = await boothCommand(second.socket, { kind: 'sync' });
+  if (
+    resumed.takeId ||
+    resumed.readyIds.length ||
+    resumed.leftId !== swapped.leftId ||
+    resumed.frame !== 'hearts'
+  )
+    throw new Error(
+      'Reconnect did not cancel the take and preserve positioning',
+    );
+  const exitedBooth = await snapshotCommand(
+    creator.socket,
+    'exit_activity',
+    { activityId: 'photo-booth' },
+    (m) => m.activeActivity === null,
+  );
+  if (
+    exitedBooth.activityInstanceId ||
+    exitedBooth.players.some((p) => p.ready)
+  )
+    throw new Error('Exiting booth did not reset the activity');
+
   const rateCreateRequest = {
     ...createRequest,
     requestId: crypto.randomUUID(),
@@ -306,6 +565,8 @@ try {
       joinRateLimit: 'passed',
       waitingRoomExitReset: 'passed',
       synchronizedActivity: firstStart.activityId,
+      photoBooth:
+        'passed: shared frames, side swap, readiness, three-second auto-start, immediate start, countdown cancellation, timed capture, duplicate start, capture locks, signaling, validation, retake, exit',
     }),
   );
 } finally {

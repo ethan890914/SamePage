@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { AUTO_START_MS, TAKE_DURATION_MS } from '../lib/photo-booth';
 import {
   PROTOCOL_VERSION,
   parseClientMessage,
@@ -70,6 +71,18 @@ export class ArcadeRoom extends DurableObject<Env> {
         room.revision += 1;
         await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
         this.broadcastSnapshot(room);
+      }
+      if (room.booth?.autoStartAt != null && room.booth.autoStartAt <= now) {
+        room.booth.autoStartAt = null;
+        this.startBoothTake(room, now);
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        this.broadcast({
+          type: 'booth_state',
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: crypto.randomUUID(),
+          serverTime: Date.now(),
+          state: room.booth,
+        });
       }
       await this.scheduleNextAlarm(room);
     });
@@ -172,6 +185,11 @@ export class ArcadeRoom extends DurableObject<Env> {
 
     if (parsed.data.type === 'leave_room') {
       await this.leaveRoom(ws, attachment);
+      return;
+    }
+
+    if (parsed.data.type === 'booth_command') {
+      await this.handleBoothCommand(ws, attachment, parsed.data);
       return;
     }
 
@@ -438,6 +456,12 @@ export class ArcadeRoom extends DurableObject<Env> {
       player.activeConnectionId = null;
       player.lastSeenAt = Date.now();
       player.reservedUntil = player.lastSeenAt + DISCONNECT_GRACE_MS;
+      if (room.booth) {
+        room.booth.readyIds = [];
+        room.booth.takeId = null;
+        room.booth.startsAt = null;
+        room.booth.autoStartAt = null;
+      }
       room.revision += 1;
       await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
       await this.scheduleNextAlarm(room);
@@ -495,7 +519,13 @@ export class ArcadeRoom extends DurableObject<Env> {
         this.sendCommandRejected(ws, command.requestId, 'player_not_found');
         return;
       }
-      if (room.activeActivity) {
+      if (
+        room.activeActivity &&
+        !(
+          command.type === 'exit_activity' &&
+          command.activityId === room.activeActivity
+        )
+      ) {
         this.sendCommandRejected(
           ws,
           command.requestId,
@@ -530,6 +560,9 @@ export class ArcadeRoom extends DurableObject<Env> {
             candidate.ready = false;
         }
         player.selectedActivity = null;
+        room.activeActivity = null;
+        room.activeActivityInstanceId = null;
+        delete room.booth;
       }
 
       room.revision += 1;
@@ -568,6 +601,7 @@ export class ArcadeRoom extends DurableObject<Env> {
         ? [player.reservedUntil]
         : [],
     );
+    if (room.booth?.autoStartAt != null) deadlines.push(room.booth.autoStartAt);
     if (deadlines.length === 0) {
       await this.ctx.storage.deleteAlarm();
       return;
@@ -595,8 +629,173 @@ export class ArcadeRoom extends DurableObject<Env> {
       revision: room.revision,
       players: room.players.map(playerView),
       activeActivity: room.activeActivity,
+      activityInstanceId: room.activeActivityInstanceId,
     };
     this.broadcast(message);
+  }
+
+  private async handleBoothCommand(
+    ws: WebSocket,
+    attachment: SocketAttachment,
+    message: Extract<ClientMessage, { type: 'booth_command' }>,
+  ) {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+      const player = room?.players.find(
+        (p) =>
+          p.id === attachment.playerId &&
+          p.activeConnectionId === attachment.connectionId,
+      );
+      if (
+        !room ||
+        !player ||
+        room.activeActivity !== 'photo-booth' ||
+        room.activeActivityInstanceId !== message.instanceId ||
+        player.selectedActivity !== 'photo-booth'
+      ) {
+        this.sendCommandRejected(ws, message.requestId, 'not_in_activity');
+        return;
+      }
+      const state =
+        room.booth?.instanceId === message.instanceId
+          ? room.booth
+          : {
+              instanceId: message.instanceId,
+              frame: 'classic' as const,
+              leftId: room.players[0].id,
+              readyIds: [],
+              takeId: null,
+              startsAt: null,
+              autoStartAt: null,
+            };
+      const command = message.command;
+      if (command.kind === 'signal') {
+        const target = room.players.find(
+          (p) =>
+            p.id === command.targetId &&
+            p.id !== player.id &&
+            p.selectedActivity === 'photo-booth',
+        );
+        if (!target) return;
+        for (const socket of this.ctx.getWebSockets()) {
+          const a = this.getAttachment(socket);
+          if (
+            a?.authenticated &&
+            a.playerId === target.id &&
+            a.connectionId === target.activeConnectionId
+          )
+            this.send(socket, {
+              type: 'booth_signal',
+              protocolVersion: PROTOCOL_VERSION,
+              serverTime: Date.now(),
+              instanceId: message.instanceId,
+              fromId: player.id,
+              signal: command.signal,
+            });
+        }
+        return;
+      }
+      const capturing =
+        state.startsAt !== null &&
+        Date.now() < state.startsAt + TAKE_DURATION_MS;
+      if (command.kind === 'sync') {
+        // A new camera connection invalidates consent and any unfinished take.
+        state.readyIds = [];
+        if (capturing) {
+          state.takeId = null;
+          state.startsAt = null;
+        }
+        const iceServers: RTCIceServer[] = [
+          { urls: 'stun:stun.l.google.com:19302' },
+        ];
+        if (this.env.TURN_URLS && this.env.TURN_SHARED_SECRET) {
+          const username = `${Math.floor(Date.now() / 1000) + 3600}:${player.id}`;
+          const key = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode(this.env.TURN_SHARED_SECRET),
+            { name: 'HMAC', hash: 'SHA-1' },
+            false,
+            ['sign'],
+          );
+          const signature = new Uint8Array(
+            await crypto.subtle.sign(
+              'HMAC',
+              key,
+              new TextEncoder().encode(username),
+            ),
+          );
+          iceServers.push({
+            urls: this.env.TURN_URLS.split(',').map((u) => u.trim()),
+            username,
+            credential: btoa(String.fromCharCode(...signature)),
+          });
+        }
+        this.send(ws, {
+          type: 'booth_ice',
+          protocolVersion: PROTOCOL_VERSION,
+          serverTime: Date.now(),
+          iceServers,
+        });
+      } else if (command.kind === 'reset') {
+        state.takeId = null;
+        state.startsAt = null;
+        state.readyIds = [];
+      } else if (command.kind === 'ready' && !capturing) {
+        state.readyIds = state.readyIds.filter((id) => id !== player.id);
+        if (command.ready) state.readyIds.push(player.id);
+      } else if (command.kind === 'frame' && !capturing) {
+        state.frame = command.frame;
+      } else if (command.kind === 'swap' && !state.takeId) {
+        state.leftId =
+          room.players.find((p) => p.id !== state.leftId)?.id ?? state.leftId;
+        state.readyIds = [];
+      } else if (
+        command.kind === 'start' &&
+        !state.takeId &&
+        room.players.length === 2 &&
+        room.players.every((p) => p.connected && state.readyIds.includes(p.id))
+      ) {
+        room.booth = state;
+        this.startBoothTake(room, Date.now());
+      }
+      const bothReady =
+        room.players.length === 2 &&
+        room.players.every((p) => p.connected && state.readyIds.includes(p.id));
+      if (!state.takeId && bothReady)
+        state.autoStartAt ??= Date.now() + AUTO_START_MS;
+      else state.autoStartAt = null;
+      room.booth = state;
+      await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+      await this.scheduleNextAlarm(room);
+      this.broadcast({
+        type: 'booth_state',
+        protocolVersion: PROTOCOL_VERSION,
+        requestId: message.requestId,
+        serverTime: Date.now(),
+        state,
+      });
+    });
+  }
+
+  private startBoothTake(room: StoredRoom, now: number) {
+    const state = room.booth;
+    if (
+      !state ||
+      state.takeId ||
+      room.activeActivity !== 'photo-booth' ||
+      room.activeActivityInstanceId !== state.instanceId ||
+      room.players.length !== 2 ||
+      !room.players.every(
+        (p) =>
+          p.connected &&
+          p.selectedActivity === 'photo-booth' &&
+          state.readyIds.includes(p.id),
+      )
+    )
+      return;
+    state.takeId = crypto.randomUUID();
+    state.startsAt = now + 1000;
+    state.autoStartAt = null;
   }
 
   private broadcast(message: ServerMessage) {
