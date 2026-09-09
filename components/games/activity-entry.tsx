@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n/provider';
 import type { ReactNode } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { PixelButton } from '@/components/pixel/pixel-button';
@@ -28,6 +29,7 @@ export function ActivityEntry({
   onExit,
   exitDisabled,
 }: ActivityEntryProps) {
+  const { t } = useLanguage();
   return (
     <section
       className={`game-entry activity-entry game-entry--${variant}`}
@@ -55,7 +57,8 @@ export function ActivityEntry({
           onClick={onExit}
           disabled={exitDisabled}
         >
-          <ArrowLeft size={16} /> Back to lobby
+          <ArrowLeft size={16} />
+          {t('Back to lobby')}
         </PixelButton>
         {actions}
       </footer>

@@ -1,15 +1,28 @@
 'use client';
 
-import { useEffect, useMemo, useState, type SyntheticEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SyntheticEvent,
+} from 'react';
 import { ArrowLeft, Check, Dices, RotateCcw, Send } from 'lucide-react';
 import { PixelButton } from '@/components/pixel/pixel-button';
 import type { ConvergeCommand, ConvergePublicState } from '@/lib/converge';
 import type { PlayerView } from '@/lib/protocol';
 import { commonEnglishWords } from '@/lib/words/en/common';
-import { convergeEnglish as copy } from '@/lib/i18n/converge';
+import { convergeEnglish } from '@/lib/i18n/converge';
+import {
+  convergeTraditionalChinese,
+  commonTraditionalChineseWords,
+} from '@/lib/i18n/zh-TW';
+import { useLanguage } from '@/lib/i18n/provider';
 
-function randomWord(previous: string) {
-  const choices = commonEnglishWords.filter((word) => word !== previous);
+function randomWord(previous: string, chinese: boolean) {
+  const choices = (
+    chinese ? commonTraditionalChineseWords : commonEnglishWords
+  ).filter((word) => word !== previous);
   return choices[
     crypto.getRandomValues(new Uint32Array(1))[0] % choices.length
   ];
@@ -32,6 +45,10 @@ export function ConvergeGame({
   send: (instanceId: string, command: ConvergeCommand) => void;
   onExit: () => void;
 }) {
+  const { locale } = useLanguage();
+  const copy =
+    locale === 'zh-TW' ? convergeTraditionalChinese : convergeEnglish;
+  const composing = useRef(false);
   const [word, setWord] = useState('');
   const [now, setNow] = useState(0);
   const connected = status === 'connected';
@@ -61,7 +78,7 @@ export function ConvergeGame({
   function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const cleanWord = word.trim();
-    if (!state || !cleanWord || submitted) return;
+    if (!state || !cleanWord || submitted || composing.current) return;
     send(instanceId, { kind: 'submit', round: state.round, word: cleanWord });
     setWord('');
   }
@@ -170,6 +187,24 @@ export function ConvergeGame({
                   autoComplete="off"
                   disabled={!connected || submitted}
                   onChange={(event) => setWord(event.target.value)}
+                  onCompositionStart={() => {
+                    composing.current = true;
+                  }}
+                  onCompositionEnd={() => {
+                    composing.current = false;
+                  }}
+                  onKeyDown={(event) => {
+                    // Safari reports the IME confirmation key as 229 after compositionend.
+                    // oxlint-disable-next-line typescript/no-deprecated
+                    const confirmingComposition = event.keyCode === 229;
+                    if (
+                      event.key === 'Enter' &&
+                      (composing.current ||
+                        event.nativeEvent.isComposing ||
+                        confirmingComposition)
+                    )
+                      event.preventDefault();
+                  }}
                   placeholder={
                     submitted ? copy.lockedPlaceholder : copy.inputPlaceholder
                   }
@@ -179,7 +214,9 @@ export function ConvergeGame({
                     type="button"
                     className="converge-random"
                     disabled={!connected}
-                    onClick={() => setWord(randomWord(word))}
+                    onClick={() =>
+                      setWord(randomWord(word, locale === 'zh-TW'))
+                    }
                     aria-label={copy.suggestLabel}
                   >
                     <Dices size={19} /> {copy.suggest}

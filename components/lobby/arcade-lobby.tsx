@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n/provider';
 import { GameEntry } from '@/components/games/game-entry';
 import { useEffect, useState, type ReactNode } from 'react';
 import type {
@@ -59,6 +60,7 @@ function PlayerSprite({
   isWalking: boolean;
   slot: number;
 }) {
+  const { t } = useLanguage();
   const position = player.selectedActivity
     ? positions[player.selectedActivity]
     : `spawn-${slot}`;
@@ -72,10 +74,10 @@ function PlayerSprite({
       />
       <span className="avatar-label">
         {player.name}
-        {isSelf ? ' · you' : ''}
+        {isSelf ? t(' · you') : ''}
       </span>
       <span className="sr-only">
-        {player.connected ? 'Online' : 'Reconnecting'}
+        {player.connected ? t('Online') : t('Reconnecting')}
       </span>
     </div>
   );
@@ -108,6 +110,7 @@ export function ArcadeLobby({
   onSetReady,
   onSelectActivity,
 }: Props) {
+  const { t } = useLanguage();
   const self = players.find((player) => player.id === selfId);
   const selectedActivity = activities.find(
     (activity) => activity.id === self?.selectedActivity,
@@ -144,7 +147,9 @@ export function ArcadeLobby({
       className="lobby-shell"
       aria-label={
         selectedActivity || startedActivity
-          ? `${(selectedActivity ?? startedActivity)?.name} activity`
+          ? t('{0} activity', [
+              t((selectedActivity ?? startedActivity)?.name ?? ''),
+            ])
           : undefined
       }
       aria-labelledby={
@@ -154,33 +159,35 @@ export function ArcadeLobby({
       {!showActivityEntry && !startedActivity && (
         <header className="lobby-toolbar">
           <div>
-            <p className="pixel-kicker">Your shared place</p>
+            <p className="pixel-kicker">{t('Your shared place')}</p>
             <h1 id="lobby-title" className="font-heading text-xl sm:text-2xl">
-              Room {roomCode}
+              {t('Room')}{' '}
+              {roomCode}
             </h1>
           </div>
           <div className="lobby-actions">
             <PixelButton type="button" onClick={onCopyRoomCode}>
               {copied ? <Check size={17} /> : <Copy size={17} />}
-              {copied ? 'Copied' : 'Copy code'}
+              {copied ? t('Copied') : t('Copy code')}
             </PixelButton>
             <PixelButton type="button" onClick={onLeave}>
-              <LogOut size={17} /> Leave
+              <LogOut size={17} />
+              {t('Leave')}
             </PixelButton>
           </div>
         </header>
       )}
       {status === 'reconnecting' && (
         <output className="lobby-alert">
-          Connection lost. Holding your place…
+          {t('Connection lost. Holding your place…')}
         </output>
       )}
       {error && (
         <div className="lobby-error" role="alert">
-          <span>{error}</span>
+          <span>{t(error)}</span>
           <button
             type="button"
-            aria-label="Dismiss error"
+            aria-label={t('Dismiss error')}
             onClick={onClearError}
           >
             <X size={17} />
@@ -211,7 +218,7 @@ export function ArcadeLobby({
           onExit={() => onExitActivity(selectedActivity.id)}
         />
       ) : (
-        <div className="arcade-room" aria-label="Choose an activity spot">
+        <div className="arcade-room" aria-label={t('Choose an activity spot')}>
           <Image
             className="arcade-room-art"
             src="/images/cozy-home-lobby.png"
@@ -244,12 +251,12 @@ export function ArcadeLobby({
                     <i />
                   </span>
                   <span className="station-copy">
-                    <strong>{activity.name}</strong>
-                    <small>{activity.detail}</small>
+                    <strong>{t(activity.name)}</strong>
+                    <small>{t(activity.detail)}</small>
                   </span>
                   <span
                     className="station-count"
-                    aria-label={`${count} players here`}
+                    aria-label={t('{0} players here', [count])}
                   >
                     {count}/2
                   </span>
@@ -271,36 +278,38 @@ export function ArcadeLobby({
               <span className="empty-avatar" aria-hidden="true">
                 ?
               </span>
-              <span>Waiting for player two</span>
+              <span>{t('Waiting for player two')}</span>
             </div>
           )}
           <p className="arcade-hint" aria-live="polite">
             {isWalking && selectedActivity
-              ? `Walking to ${selectedActivity.name}…`
-              : 'Choose a station to walk over'}
+              ? t('Walking to {0}…', [t(selectedActivity.name)])
+              : t('Choose a station to walk over')}
           </p>
 
           {startedActivity ? (
             <output className="activity-started-panel">
               <p className="pixel-kicker">
                 {startedActivity.id === 'minesweeper'
-                  ? 'Round in progress'
-                  : 'Both ready!'}
+                  ? t('Round in progress')
+                  : t('Both ready!')}
               </p>
-              <h2>{startedActivity.name}</h2>
+              <h2>{t(startedActivity.name)}</h2>
               <p>
                 {startedActivity.id === 'photo-booth'
-                  ? 'Waiting for both of you to reconnect to the booth…'
+                  ? t('Waiting for both of you to reconnect to the booth…')
                   : startedActivity.id === 'minesweeper'
-                    ? 'Waiting for the previous round to return to setup. You can join the next round.'
-                    : 'Your game setup is ready. Gameplay is coming next.'}
+                    ? t(
+                        'Waiting for the previous round to return to setup. You can join the next round.',
+                      )
+                    : t('Your game setup is ready. Gameplay is coming next.')}
               </p>
               {self?.selectedActivity === startedActivity.id && (
                 <PixelButton
                   disabled={status !== 'connected'}
                   onClick={() => onExitActivity(startedActivity.id)}
                 >
-                  Back to lobby
+                  {t('Back to lobby')}
                 </PixelButton>
               )}
             </output>

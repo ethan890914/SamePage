@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n/provider';
 import { ActivityEntry } from '@/components/games/activity-entry';
 import { MinesweeperSettingsFields } from '@/components/games/minesweeper-settings';
 import { Check, SlidersHorizontal } from 'lucide-react';
@@ -11,7 +12,8 @@ import type {
   PatternRaceSettings,
   MinesweeperSettings,
 } from '@/lib/game-settings';
-import { gameEntryEnglish as copy } from '@/lib/i18n/game-entry';
+import { gameEntryEnglish } from '@/lib/i18n/game-entry';
+import { gameEntryTraditionalChinese } from '@/lib/i18n/zh-TW';
 
 export function GameEntry({
   activityId,
@@ -52,24 +54,37 @@ export function GameEntry({
   onReady: (ready: boolean) => void;
   onExit: () => void;
 }) {
+  const { t, locale } = useLanguage();
+  const copy =
+    locale === 'zh-TW' ? gameEntryTraditionalChinese : gameEntryEnglish;
   const game =
     activityId === 'photo-booth'
       ? {
-          description: 'Four photos, one shared strip.',
+          description: t('Four photos, one shared strip.'),
           rules: [
-            'Enable your camera and check your preview.',
-            'Choose a countdown, then both get ready to enter the booth.',
-            'Pick a frame, switch sides, and pose for four photos. Download your strip with the original or shared background.',
+            t('Enable your camera and check your preview.'),
+            t('Choose a countdown, then both get ready to enter the booth.'),
+            t(
+              'Pick a frame, switch sides, and pose for four photos. Download your strip with the original or shared background.',
+            ),
           ],
         }
       : activityId === 'minesweeper'
         ? {
-            description: 'One board. Take turns. Watch your step.',
+            description: t('One board. Take turns. Watch your step.'),
             rules: [
-              'Take turns revealing one tile. Numbers count mines in the eight neighboring tiles; empty areas open automatically as one turn.',
-              'Hit a mine and you lose. Reveal the final safe tile and you win. The first reveal always opens a safe area.',
-              'Flag suspected mines on your turn without spending it. Flags are shared notes and may be wrong.',
-              'Activate an open number to reveal its other neighbors when adjacent flags match. Incorrect flags can cause an explosion.',
+              t(
+                'Take turns revealing one tile. Numbers count mines in the eight neighboring tiles; empty areas open automatically as one turn.',
+              ),
+              t(
+                'Hit a mine and you lose. Reveal the final safe tile and you win. The first reveal always opens a safe area.',
+              ),
+              t(
+                'Flag suspected mines on your turn without spending it. Flags are shared notes and may be wrong.',
+              ),
+              t(
+                'Activate an open number to reveal its other neighbors when adjacent flags match. Incorrect flags can cause an explosion.',
+              ),
             ],
           }
         : copy.games[activityId];
@@ -103,12 +118,12 @@ export function GameEntry({
       >
         {activityId === 'photo-booth'
           ? cameraBusy
-            ? 'Opening camera…'
+            ? t('Opening camera…')
             : !cameraReady
-              ? 'Enable camera'
+              ? t('Enable camera')
               : self?.ready
-                ? 'Ready'
-                : 'Not ready'
+                ? t('Ready')
+                : t('Not ready')
           : self?.ready
             ? copy.cancelReady
             : copy.ready}
@@ -120,12 +135,12 @@ export function GameEntry({
       variant={activityId}
       title={
         activityId === 'converge'
-          ? 'Converge'
+          ? t('Converge')
           : activityId === 'minesweeper'
-            ? 'Minesweeper'
+            ? t('Minesweeper')
             : activityId === 'photo-booth'
-              ? 'Photo Booth'
-              : 'Pattern Race'
+              ? t('Photo Booth')
+              : t('Pattern Race')
       }
       subtitle={game.description}
       eyebrow={copy.eyebrow}
@@ -200,18 +215,20 @@ export function GameEntry({
           <div className="game-entry-settings">
             <fieldset disabled={!connected || Boolean(self?.ready)}>
               <legend className="game-setting-label">
-                Countdown per photo
+                {t('Countdown per photo')}
               </legend>
               <SettingStepper
-                label="countdown"
+                label={t('countdown')}
                 options={[10, 12, 15]}
                 value={countdownSeconds}
-                format={(seconds) => `${seconds} sec`}
+                format={(seconds) => t('{0} sec', [seconds])}
                 onChange={(seconds) => onCountdown?.(seconds)}
               />
             </fieldset>
             <p className="game-settings-note">
-              Shared by both players. Changing the countdown resets readiness.
+              {t(
+                'Shared by both players. Changing the countdown resets readiness.',
+              )}
             </p>
             {camera}
           </div>

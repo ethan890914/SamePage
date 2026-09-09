@@ -9,7 +9,9 @@ import {
 } from 'react';
 import { ArrowLeft, RotateCcw, Send, SkipForward, Trophy } from 'lucide-react';
 import { PixelButton } from '@/components/pixel/pixel-button';
-import { patternRaceEnglish as copy } from '@/lib/i18n/pattern-race';
+import { patternRaceEnglish } from '@/lib/i18n/pattern-race';
+import { patternRaceTraditionalChinese } from '@/lib/i18n/zh-TW';
+import { useLanguage } from '@/lib/i18n/provider';
 import type {
   PatternRaceCommand,
   PatternRaceGuessError,
@@ -57,6 +59,9 @@ export function PatternRaceGame({
   onExit: () => void;
 }) {
   const [draft, setDraft] = useState({ round: 1, word: '' });
+  const { locale, t } = useLanguage();
+  const copy =
+    locale === 'zh-TW' ? patternRaceTraditionalChinese : patternRaceEnglish;
   const [now, setNow] = useState(() => Date.now());
   const inputRef = useRef<HTMLInputElement>(null);
   const connected = status === 'connected';
@@ -127,7 +132,7 @@ export function PatternRaceGame({
         </div>
         <div className="pattern-race-toolbar-meta">
           {remainingProblems !== null && state.phase !== 'finished' && (
-            <span>First to {remainingProblems} points</span>
+            <span>{t('First to {0} points', [remainingProblems])}</span>
           )}
           {timeLeft !== null && state.phase !== 'finished' && (
             <strong className={timeLeft <= 30_000 ? 'is-urgent' : ''}>
@@ -183,7 +188,7 @@ export function PatternRaceGame({
               <small>
                 {state.pattern.length === null
                   ? copy.anyLength
-                  : `${state.pattern.length} letters`}
+                  : t('{0} letters', [state.pattern.length])}
               </small>
             </div>
 
@@ -193,6 +198,7 @@ export function PatternRaceGame({
                 <input
                   ref={inputRef}
                   id="pattern-race-word"
+                  lang="en"
                   value={word}
                   maxLength={40}
                   autoComplete="off"
@@ -233,11 +239,11 @@ export function PatternRaceGame({
               >
                 <SkipForward size={17} />
                 {state.skipIds?.includes(selfId)
-                  ? 'Skip requested · waiting for partner'
-                  : `Skip (${state.skipIds?.length ?? 0}/2)`}
+                  ? t('Skip requested · waiting for partner')
+                  : t('Skip ({0}/2)', [state.skipIds?.length ?? 0])}
               </PixelButton>
               <small>
-                Both players must agree to skip. No points are awarded.
+                {t('Both players must agree to skip. No points are awarded.')}
               </small>
             </div>
           </div>
@@ -246,13 +252,13 @@ export function PatternRaceGame({
             <Trophy size={42} aria-hidden="true" />
             <h2>
               {state.roundWinnerId
-                ? copy.roundWinner(roundWinner?.name ?? 'Player')
-                : 'Problem skipped'}
+                ? copy.roundWinner(roundWinner?.name ?? t('Player'))
+                : t('Problem skipped')}
             </h2>
             {state.winningWord && <strong>{state.winningWord}</strong>}
             <output aria-live="polite">
               {state.nextProblemAt != null
-                ? `Next problem in ${Math.min(3, Math.max(0, Math.ceil((state.nextProblemAt - now) / 1000)))}…`
+                ? t('Next problem in {0}…', [Math.min(3, Math.max(0, Math.ceil((state.nextProblemAt - now) / 1000)))])
                 : copy.paused}
             </output>
           </div>
@@ -264,7 +270,7 @@ export function PatternRaceGame({
                 ? state.history.length === 0
                   ? copy.noWinner
                   : copy.tie
-                : copy.winner(gameWinners[0]?.name ?? 'Player')}
+                : copy.winner(gameWinners[0]?.name ?? t('Player'))}
             </h2>
             {state.winningWord && <strong>{state.winningWord}</strong>}
             <PixelButton

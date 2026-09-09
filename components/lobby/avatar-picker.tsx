@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n/provider';
 import { useState } from 'react';
 import { avatarIds, type AvatarId } from '@/lib/protocol';
 
@@ -19,6 +20,7 @@ type Props = {
 };
 
 export function AvatarPicker({ disabled, selected, onSelect }: Props) {
+  const { t } = useLanguage();
   const initialIndex = Math.max(0, avatarIds.indexOf(selected));
   const [page, setPage] = useState(Math.floor(initialIndex / 2));
   const pageCount = Math.ceil(avatarIds.length / 2);
@@ -30,13 +32,13 @@ export function AvatarPicker({ disabled, selected, onSelect }: Props) {
 
   return (
     <fieldset className="avatar-picker">
-      <legend>Choose your person</legend>
+      <legend>{t('Choose your person')}</legend>
       <div className="avatar-carousel">
         <button
           className="avatar-arrow"
           type="button"
           disabled={disabled}
-          aria-label="View previous avatars"
+          aria-label={t('View previous avatars')}
           onClick={() => movePage(-1)}
         >
           &lt;
@@ -51,7 +53,7 @@ export function AvatarPicker({ disabled, selected, onSelect }: Props) {
                 type="button"
                 disabled={disabled}
                 aria-pressed={selected === avatarId}
-                aria-label={`Choose ${avatarNames[index]} avatar`}
+                aria-label={t('Choose {0} avatar', [avatarNames[index]])}
                 onClick={() => onSelect(avatarId)}
               >
                 <span className={`avatar-art ${avatarId}`} aria-hidden="true" />
@@ -63,14 +65,14 @@ export function AvatarPicker({ disabled, selected, onSelect }: Props) {
           className="avatar-arrow"
           type="button"
           disabled={disabled}
-          aria-label="View next avatars"
+          aria-label={t('View next avatars')}
           onClick={() => movePage(1)}
         >
           &gt;
         </button>
       </div>
       <p className="avatar-page" aria-live="polite">
-        Pair {page + 1} of {pageCount}
+        {t('Pair {0} of {1}', [page + 1, pageCount])}
       </p>
     </fieldset>
   );

@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n/provider';
 import type { SyntheticEvent } from 'react';
 import { Gamepad2, KeyRound, Sparkles, UsersRound } from 'lucide-react';
 import { PixelButton } from '@/components/pixel/pixel-button';
@@ -26,6 +27,7 @@ type Props = {
 };
 
 export function EntryScreen(props: Props) {
+  const { t } = useLanguage();
   const {
     busy,
     displayName,
@@ -47,37 +49,39 @@ export function EntryScreen(props: Props) {
       <div className="entry-hero pixel-stage">
         <div className="pixel-stars" aria-hidden="true" />
         <div className="relative z-10 max-w-2xl">
-          <p className="pixel-kicker">A private arcade for two</p>
+          <p className="pixel-kicker">{t('A private arcade for two')}</p>
           <h1 className="pixel-slogan mt-4 text-balance font-heading text-[clamp(2.5rem,5vw,5.4rem)] leading-[.92]">
-            <span>Different locations,</span>
-            <span>Different time zones,</span>
-            <span>But now on the Same Page.</span>
+            <span>{t('Different locations,')}</span>
+            <span>{t('Different time zones,')}</span>
+            <span>{t('But now on the Same Page.')}</span>
           </h1>
           <p className="mt-6 max-w-lg text-lg leading-7 text-muted-foreground">
-            Open a room during your call, share the code, and meet your person
-            inside.
+            {t(
+              'Open a room during your call, share the code, and meet your person inside.',
+            )}
           </p>
         </div>
         <div className="entry-marquee" aria-hidden="true">
-          <span>CONVERGE</span>
-          <span>PATTERN RACE</span>
-          <span>PHOTO BOOTH</span>
+          <span>{t('CONVERGE')}</span>
+          <span>{t('PATTERN RACE')}</span>
+          <span>{t('PHOTO BOOTH')}</span>
         </div>
       </div>
       <PixelPanel
         className="entry-panel self-start"
-        eyebrow="Enter the arcade"
-        title="Ready when you are"
+        eyebrow={t('Enter the arcade')}
+        title={t('Ready when you are')}
       >
         <fieldset className="mb-5 grid grid-cols-2 gap-2">
-          <legend className="sr-only">Room action</legend>
+          <legend className="sr-only">{t('Room action')}</legend>
           <PixelButton
             pressed={mode === 'create'}
             onClick={() => onModeChange('create')}
             disabled={busy}
             variant="tab"
           >
-            <Sparkles size={17} /> Create
+            <Sparkles size={17} />
+            {t('Create')}
           </PixelButton>
           <PixelButton
             pressed={mode === 'join'}
@@ -85,7 +89,8 @@ export function EntryScreen(props: Props) {
             disabled={busy}
             variant="tab"
           >
-            <UsersRound size={17} /> Join
+            <UsersRound size={17} />
+            {t('Join')}
           </PixelButton>
         </fieldset>
         <form className="space-y-4" onSubmit={onSubmit}>
@@ -95,9 +100,9 @@ export function EntryScreen(props: Props) {
             onSelect={onAvatarChange}
           />
           <PixelField
-            label="Your display name"
+            label={t('Your display name')}
             id="display-name"
-            placeholder="Player one"
+            placeholder={t('Player one')}
             autoComplete="nickname"
             value={displayName}
             onChange={(event) => onDisplayNameChange(event.target.value)}
@@ -107,7 +112,7 @@ export function EntryScreen(props: Props) {
           />
           {mode === 'join' && (
             <PixelField
-              label="Room code"
+              label={t('Room code')}
               id="room-code"
               placeholder="MOON-7K2P"
               autoCapitalize="characters"
@@ -123,7 +128,9 @@ export function EntryScreen(props: Props) {
           )}
           <PixelField
             label={
-              mode === 'create' ? 'Choose a room password' : 'Room password'
+              mode === 'create'
+                ? t('Choose a room password')
+                : t('Room password')
             }
             id="password"
             type="password"
@@ -143,7 +150,7 @@ export function EntryScreen(props: Props) {
               className="border-2 border-red-700 bg-red-100 px-3 py-2 text-sm text-red-950"
               role="alert"
             >
-              {error}
+              {t(error)}
             </p>
           )}
           <PixelButton
@@ -155,18 +162,19 @@ export function EntryScreen(props: Props) {
             <Gamepad2 size={19} />{' '}
             {busy
               ? status === 'creating'
-                ? 'Creating arcade…'
-                : 'Connecting…'
+                ? t('Creating arcade…')
+                : t('Connecting…')
               : mode === 'create'
-                ? 'Create arcade'
-                : 'Join arcade'}
+                ? t('Create arcade')
+                : t('Join arcade')}
           </PixelButton>
         </form>
         <div className="mt-5 flex items-start gap-3 border-t border-border pt-4 text-sm leading-5 text-muted-foreground">
           <KeyRound className="mt-0.5 shrink-0 text-accent" size={17} />
           <p>
-            Your room stays private. Share the code and password with your
-            person.
+            {t(
+              'Your room stays private. Share the code and password with your person.',
+            )}
           </p>
         </div>
       </PixelPanel>

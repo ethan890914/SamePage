@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n/provider';
 import { useState } from 'react';
 import { SettingStepper } from '@/components/pixel/setting-stepper';
 import { Input } from '@/components/ui/input';
@@ -26,6 +27,7 @@ export function MinesweeperSettingsFields({
   disabled: boolean;
   onChange: (settings: MinesweeperSettings) => void;
 }) {
+  const { t } = useLanguage();
   const [custom, setCustom] = useState(false);
   const [rows, setRows] = useState(String(settings.rows));
   const [columns, setColumns] = useState(String(settings.columns));
@@ -41,26 +43,30 @@ export function MinesweeperSettingsFields({
       disabled={disabled}
       className="game-entry-settings minesweeper-settings"
     >
-      <legend className="sr-only">Minesweeper settings</legend>
-      <span className="game-setting-label">Starting player</span>
+      <legend className="sr-only">{t('Minesweeper settings')}</legend>
+      <span className="game-setting-label">{t('Starting player')}</span>
       <SettingStepper
-        label="starting player"
+        label={t('starting player')}
         options={['player1', 'player2', 'random'] as const}
         value={settings.startingPlayer}
         format={(value) =>
           value === 'random'
-            ? 'Random'
-            : `Player ${value === 'player1' ? 1 : 2} (${players[value === 'player1' ? 0 : 1]?.name ?? 'waiting to join'})`
+            ? t('Random')
+            : t('Player {0} ({1})', [
+                value === 'player1' ? 1 : 2,
+                players[value === 'player1' ? 0 : 1]?.name ??
+                  t('waiting to join'),
+              ])
         }
         onChange={(startingPlayer) => onChange({ ...settings, startingPlayer })}
       />
-      <span className="game-setting-label">Board size</span>
+      <span className="game-setting-label">{t('Board size')}</span>
       <SettingStepper
-        label="board size"
+        label={t('board size')}
         options={[...boards.map((board) => board.id), 'custom']}
         value={custom ? 'custom' : (preset?.id ?? 'custom')}
         format={(value) =>
-          boards.find((board) => board.id === value)?.label ?? 'Custom'
+          t(boards.find((board) => board.id === value)?.label ?? 'Custom')
         }
         onChange={(value) => {
           const board = boards.find((option) => option.id === value);
@@ -74,7 +80,7 @@ export function MinesweeperSettingsFields({
       {(custom || !preset) && (
         <div className="minesweeper-custom-size">
           <div className="minesweeper-custom-dimension">
-            <label htmlFor="minesweeper-custom-rows">Rows</label>
+            <label htmlFor="minesweeper-custom-rows">{t('Rows')}</label>
             <Input
               id="minesweeper-custom-rows"
               type="number"
@@ -86,7 +92,7 @@ export function MinesweeperSettingsFields({
             />
           </div>
           <div className="minesweeper-custom-dimension">
-            <label htmlFor="minesweeper-custom-columns">Columns</label>
+            <label htmlFor="minesweeper-custom-columns">{t('Columns')}</label>
             <Input
               id="minesweeper-custom-columns"
               type="number"
@@ -108,29 +114,31 @@ export function MinesweeperSettingsFields({
               })
             }
           >
-            Apply size
+            {t('Apply size')}
           </PixelButton>
-          <p>8–30 rows and columns. Apply your size before getting ready.</p>
+          <p>
+            {t('8–30 rows and columns. Apply your size before getting ready.')}
+          </p>
           {valid && (
             <output aria-live="polite">
-              Custom preview:{' '}
+              {t('Custom preview:')}{' '}
               {minesweeperMineCount({
                 ...settings,
                 rows: Number(rows),
                 columns: Number(columns),
               })}{' '}
-              mines
+              {t('mines')}
             </output>
           )}
         </div>
       )}
-      <span className="game-setting-label">Difficulty</span>
+      <span className="game-setting-label">{t('Difficulty')}</span>
       <SettingStepper
-        label="difficulty"
+        label={t('difficulty')}
         options={['easy', 'medium', 'hard'] as const}
         value={settings.difficulty}
         format={(value) =>
-          ({ easy: 'Easy', medium: 'Medium', hard: 'Hard' })[value]
+          ({ easy: t('Easy'), medium: t('Medium'), hard: t('Hard') })[value]
         }
         onChange={(difficulty) =>
           onChange({
@@ -140,15 +148,19 @@ export function MinesweeperSettingsFields({
         }
       />
       <output className="minesweeper-mine-preview" aria-live="polite">
-        {settings.rows} × {settings.columns} board ·{' '}
-        {minesweeperMineCount(settings)} mines
+        {t('{0} × {1} board · {2} mines', [
+          settings.rows,
+          settings.columns,
+          minesweeperMineCount(settings),
+        ])}
       </output>
       <p>
-        The first reveal always opens a safe area. Take as long as you need on
-        your turn.
+        {t(
+          'The first reveal always opens a safe area. Take as long as you need on your turn.',
+        )}
       </p>
       <p className="game-settings-note">
-        Shared by both players. Changing settings resets readiness.
+        {t('Shared by both players. Changing settings resets readiness.')}
       </p>
     </fieldset>
   );

@@ -1,4 +1,5 @@
 'use client';
+import { useLanguage } from '@/lib/i18n/provider';
 
 import { useState, useSyncExternalStore, type SyntheticEvent } from 'react';
 import { ArcadeLobby } from '@/components/lobby/arcade-lobby';
@@ -12,6 +13,8 @@ import { ConvergeGame } from '@/components/games/converge-game';
 import { PatternRaceGame } from '@/components/games/pattern-race-game';
 import { MinesweeperGame } from '@/components/games/minesweeper-game';
 import { isAvatarId, type AvatarId } from '@/lib/protocol';
+import { LanguageProvider } from '@/lib/i18n/provider';
+import { SettingStepper } from '@/components/pixel/setting-stepper';
 
 const subscribeToLocalStorage = () => () => {};
 
@@ -29,6 +32,15 @@ function getDefaultAvatar(): AvatarId {
 }
 
 export default function Home() {
+  return (
+    <LanguageProvider>
+      <HomeContent />
+    </LanguageProvider>
+  );
+}
+
+function HomeContent() {
+  const { t, locale, setLocale } = useLanguage();
   const [mode, setMode] = useState<EntryMode>('create');
   const storedDisplayName = useSyncExternalStore(
     subscribeToLocalStorage,
@@ -86,12 +98,12 @@ export default function Home() {
 
   const statusLabel =
     room.status === 'connected'
-      ? 'Connected'
+      ? t('Connected')
       : room.status === 'reconnecting'
-        ? 'Reconnecting'
+        ? t('Reconnecting')
         : busy
-          ? 'Connecting'
-          : 'Arcade online';
+          ? t('Connecting')
+          : t('Arcade online');
 
   return (
     <main
@@ -100,16 +112,30 @@ export default function Home() {
     >
       <div className="mx-auto max-w-7xl">
         <header className="site-header">
-          <a className="pixel-logo" href="#top" aria-label="Same Page home">
+          <a
+            className="pixel-logo"
+            href="#top"
+            aria-label={t('Same Page home')}
+          >
             <span className="pixel-logo-mark" aria-hidden="true">
               SP
             </span>
             <span>
               <strong>Same Page</strong>
-              <small>Two-player arcade</small>
+              <small>{t('Two-player arcade')}</small>
             </span>
           </a>
-          <PixelStatus label={statusLabel} />
+          <div className="site-header-controls">
+            <SettingStepper
+              label={locale === 'zh-TW' ? '語言 / Language' : 'Language / 語言'}
+              options={['en', 'zh-TW'] as const}
+              value={locale}
+              format={(value) => (value === 'en' ? 'English' : '繁體中文')}
+              onChange={setLocale}
+            />
+            <PixelStatus label={statusLabel} />
+
+          </div>
         </header>
 
         {inRoom && room.roomCode && room.selfId ? (

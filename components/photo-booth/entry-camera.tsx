@@ -1,3 +1,4 @@
+import { useLanguage } from '@/lib/i18n/provider';
 import { useEffect, useRef } from 'react';
 
 export function EntryCamera({
@@ -7,6 +8,7 @@ export function EntryCamera({
   stream: MediaStream | null;
   error: string | null;
 }) {
+  const { t } = useLanguage();
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (video.current) video.current.srcObject = stream;
@@ -18,14 +20,14 @@ export function EntryCamera({
         autoPlay
         muted
         playsInline
-        aria-label="Your camera preview"
+        aria-label={t('Your camera preview')}
       />
       <p>
         {stream
-          ? 'Your camera will stay on when you enter the booth.'
-          : 'Enable your camera before getting ready.'}
+          ? t('Your camera will stay on when you enter the booth.')
+          : t('Enable your camera before getting ready.')}
       </p>
-      {error && <p role="alert">{error}</p>}
+      {error && <p role="alert">{t(error)}</p>}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 'use client';
+import { useLanguage } from '@/lib/i18n/provider';
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
@@ -38,6 +39,7 @@ export function MinesweeperGame({
   send: (instanceId: string, command: MinesweeperCommand) => void;
   onExit: () => void;
 }) {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<'reveal' | 'flag'>('reveal');
   const [focusedCell, setFocusedCell] = useState(0);
   const [pendingState, setPendingState] =
@@ -51,25 +53,25 @@ export function MinesweeperGame({
   if (!state || state.instanceId !== instanceId)
     return (
       <section className="minesweeper-game" aria-live="polite">
-        <h1 className="font-heading">Minesweeper</h1>
+        <h1 className="font-heading">{t('Minesweeper')}</h1>
         <p>
           {connected
-            ? 'Opening your shared board…'
-            : 'Reconnecting to your board…'}
+            ? t('Opening your shared board…')
+            : t('Reconnecting to your board…')}
         </p>
         <PixelButton
           disabled={!connected}
           onClick={() => send(instanceId, { kind: 'sync' })}
         >
-          Reload board
+          {t('Reload board')}
         </PixelButton>
         <PixelButton disabled={!connected} onClick={onExit}>
-          Back to lobby
+          {t('Back to lobby')}
         </PixelButton>
       </section>
     );
   const name = (id: string | null) =>
-    players.find((player) => player.id === id)?.name ?? 'Your opponent';
+    players.find((player) => player.id === id)?.name ?? t('Your opponent');
   const bothConnected =
     players.length === 2 &&
     state.playerIds.every((id) =>
@@ -84,28 +86,34 @@ export function MinesweeperGame({
   const flags = state.flags.filter(Boolean).length;
   const heading = finished
     ? state.result === 'abandoned'
-      ? 'Round abandoned'
+      ? t('Round abandoned')
       : state.winnerId === selfId
-        ? 'You win!'
-        : `${name(state.winnerId)} wins!`
+        ? t('You win!')
+        : t('{0} wins!', [name(state.winnerId)])
     : paused
-      ? 'Game paused'
+      ? t('Game paused')
       : yourTurn
-        ? 'Your turn'
-        : `${name(state.currentPlayerId)}’s turn`;
+        ? t('Your turn')
+        : t('{0}’s turn', [name(state.currentPlayerId)]);
   const description = finished
     ? state.result === 'abandoned'
-      ? 'A player left the room. Return to setup to play again.'
+      ? t('A player left the room. Return to setup to play again.')
       : state.result === 'exploded'
-        ? `${name(state.lastAction?.playerId ?? null)} revealed a mine.`
-        : `${name(state.winnerId)} revealed the final safe tile.`
+        ? t('{0} revealed a mine.', [name(state.lastAction?.playerId ?? null)])
+        : t('{0} revealed the final safe tile.', [name(state.winnerId)])
     : paused
-      ? 'Holding the board and turn while you reconnect.'
+      ? t('Holding the board and turn while you reconnect.')
       : !state.generated
-        ? `${name(state.startingPlayerId)} starts. The first reveal opens a safe area.`
+        ? t('{0} starts. The first reveal opens a safe area.', [
+            name(state.startingPlayerId),
+          ])
         : state.lastAction
-          ? `${name(state.lastAction.playerId)} opened ${state.lastAction.revealedCount} safe ${state.lastAction.revealedCount === 1 ? 'tile' : 'tiles'}.`
-          : 'Choose a tile to reveal.';
+          ? t('{0} opened {1} safe {2}.', [
+              name(state.lastAction.playerId),
+              state.lastAction.revealedCount,
+              state.lastAction.revealedCount === 1 ? 'tile' : 'tiles',
+            ])
+          : t('Choose a tile to reveal.');
 
   function act(cell: number, kind: 'reveal' | 'flag' | 'chord') {
     if (!canAct || !state) return;
@@ -176,14 +184,22 @@ export function MinesweeperGame({
       <header className="minesweeper-header">
         <div>
           <p className="pixel-kicker">
-            Round {state.round} · {state.settings.difficulty}
+            {t('Round {0} · {1}', [
+              state.round,
+              t(
+                { easy: 'Easy', medium: 'Medium', hard: 'Hard' }[
+                  state.settings.difficulty
+                ],
+              ),
+            ])}
           </p>
           <h1 id="minesweeper-title" className="font-heading">
-            Minesweeper
+            {t('Minesweeper')}
           </h1>
         </div>
         <PixelButton disabled={!connected} onClick={onExit}>
-          <ArrowLeft size={16} /> Back to lobby
+          <ArrowLeft size={16} />
+          {t('Back to lobby')}
         </PixelButton>
       </header>
       <div className="minesweeper-players">
@@ -200,19 +216,19 @@ export function MinesweeperGame({
               />
               <span>
                 <strong>
-                  {player?.name ?? `Player ${index + 1}`}
-                  {id === selfId ? ' · you' : ''}
+                  {player?.name ?? t('Player {0}', [index + 1])}
+                  {id === selfId ? t(' · you') : ''}
                 </strong>
                 <small>
                   {!player?.connected
-                    ? 'Disconnected'
+                    ? t('Disconnected')
                     : state.winnerId === id
-                      ? 'Winner'
+                      ? t('Winner')
                       : state.replayReadyIds.includes(id)
-                        ? 'Ready for rematch'
+                        ? t('Ready for rematch')
                         : state.startingPlayerId === id
-                          ? 'Starting player'
-                          : `Player ${index + 1}`}
+                          ? t('Starting player')
+                          : t('Player {0}', [index + 1])}
                 </small>
               </span>
             </div>
@@ -227,10 +243,10 @@ export function MinesweeperGame({
       </output>
       {error && (
         <div className="lobby-error" role="alert">
-          <span>{error}</span>
+          <span>{t(error)}</span>
           <button
             type="button"
-            aria-label="Dismiss error"
+            aria-label={t('Dismiss error')}
             onClick={onClearError}
           >
             <X size={17} />
@@ -241,40 +257,47 @@ export function MinesweeperGame({
         <div className="minesweeper-stats">
           <div>
             <strong>{String(state.mineCount - flags).padStart(3, '0')}</strong>
-            <span>Mines − flags</span>
+            <span>{t('Mines − flags')}</span>
           </div>
           <Bomb size={28} aria-hidden="true" />
           <div>
             <strong>{String(state.safeRemaining).padStart(3, '0')}</strong>
-            <span>Safe tiles left</span>
+            <span>{t('Safe tiles left')}</span>
           </div>
         </div>
         {!finished && (
-          <div className="minesweeper-tools" aria-label="Tile action">
+          <div className="minesweeper-tools" aria-label={t('Tile action')}>
             <PixelButton
               variant="tab"
               pressed={mode === 'reveal'}
               onClick={() => setMode('reveal')}
             >
-              <MousePointer2 size={16} /> Reveal
+              <MousePointer2 size={16} />
+              {t('Reveal')}
             </PixelButton>
             <PixelButton
               variant="tab"
               pressed={mode === 'flag'}
               onClick={() => setMode('flag')}
             >
-              <Flag size={16} /> Flag
+              <Flag size={16} />
+              {t('Flag')}
             </PixelButton>
-            <span>{pending ? 'Updating board…' : `Turn ${state.turn}`}</span>
+            <span>
+              {pending ? t('Updating board…') : t('Turn {0}', [state.turn])}
+            </span>
           </div>
         )}
         <section
           className="minesweeper-board-scroll"
-          aria-label="Scrollable Minesweeper board"
+          aria-label={t('Scrollable Minesweeper board')}
         >
           <table
             className="minesweeper-board"
-            aria-label={`${state.settings.rows} by ${state.settings.columns} Minesweeper board`}
+            aria-label={t('{0} by {1} Minesweeper board', [
+              state.settings.rows,
+              state.settings.columns,
+            ])}
             aria-describedby="minesweeper-help"
           >
             <tbody>
@@ -292,7 +315,23 @@ export function MinesweeperGame({
                       const wrongFlag =
                         finished && flag && value !== null && value !== -1;
                       const last = state.lastAction?.cell === cell;
-                      const label = `Row ${row + 1}, column ${column + 1}: ${wrongFlag ? 'incorrect flag' : flag ? (finished && mine ? 'correctly flagged mine' : 'flagged') : mine ? 'mine' : open ? (value === 0 ? 'empty' : `${value} adjacent mines`) : 'hidden'}`;
+                      const label = t('Row {0}, column {1}: {2}', [
+                        row + 1,
+                        column + 1,
+                        wrongFlag
+                          ? t('incorrect flag')
+                          : flag
+                            ? finished && mine
+                              ? t('correctly flagged mine')
+                              : t('flagged')
+                            : mine
+                              ? t('mine')
+                              : open
+                                ? value === 0
+                                  ? t('empty')
+                                  : t('{0} adjacent mines', [value])
+                                : t('hidden'),
+                      ]);
                       return (
                         <td key={cell}>
                           <button
@@ -353,10 +392,10 @@ export function MinesweeperGame({
         </section>
       </div>
       <p id="minesweeper-help" className="minesweeper-help">
-        Click or tap to {mode === 'flag' ? 'flag' : 'reveal'}. Right-click or
-        press F to flag. Use arrow keys to move and Enter or Space to activate.
-        In Reveal mode, activate an open number to open its unflagged neighbors
-        when the flag count matches. Flags are shared and may be wrong.
+        {t(
+          'Click or tap to {0}. Right-click or press F to flag. Use arrow keys to move and Enter or Space to activate. In Reveal mode, activate an open number to open its unflagged neighbors when the flag count matches. Flags are shared and may be wrong.',
+          [t(mode === 'flag' ? 'flag' : 'reveal')],
+        )}
       </p>
       {finished && (
         <footer className="minesweeper-result-actions">
@@ -374,7 +413,7 @@ export function MinesweeperGame({
               }
             >
               <RotateCcw size={16} />
-              {ready ? 'Cancel rematch ready' : 'Rematch'}
+              {ready ? t('Cancel rematch ready') : t('Rematch')}
             </PixelButton>
           )}
           <PixelButton
@@ -383,13 +422,14 @@ export function MinesweeperGame({
               send(instanceId, { kind: 'return_to_setup', round: state.round })
             }
           >
-            <Settings2 size={16} /> Game settings
+            <Settings2 size={16} />
+            {t('Game settings')}
           </PixelButton>
           {ready && (
             <output>
-              Waiting for{' '}
-              {name(state.playerIds.find((id) => id !== selfId) ?? null)} to get
-              ready…
+              {t('Waiting for {0} to get ready…', [
+                name(state.playerIds.find((id) => id !== selfId) ?? null),
+              ])}
             </output>
           )}
         </footer>

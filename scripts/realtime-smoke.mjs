@@ -316,25 +316,25 @@ try {
   const opening = await convergeCommand(creator.socket, {
     kind: 'submit',
     round: 1,
-    word: 'ocean',
+    word: '海洋',
   });
   if (
     opening.history.length !== 0 ||
     !opening.submittedIds.includes(created.selfId) ||
-    JSON.stringify(opening).includes('ocean')
+    JSON.stringify(opening).includes('海洋')
   )
     throw new Error('Converge exposed a private submission');
 
   const connectedRound = await convergeCommand(second.socket, {
     kind: 'submit',
     round: 1,
-    word: 'mountain',
+    word: '山峰',
   });
   if (
     connectedRound.round !== 2 ||
     connectedRound.phase !== 'playing' ||
-    connectedRound.baseWords?.[0] !== 'ocean' ||
-    connectedRound.baseWords?.[1] !== 'mountain' ||
+    connectedRound.baseWords?.[0] !== '海洋' ||
+    connectedRound.baseWords?.[1] !== '山峰' ||
     connectedRound.deadline <= Date.now()
   )
     throw new Error('Converge did not reveal and start the timed round');

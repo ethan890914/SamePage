@@ -1,4 +1,5 @@
 'use client';
+import { useLanguage } from '@/lib/i18n/provider';
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
@@ -69,6 +70,7 @@ function CameraPane({
   videoRef?: RefObject<HTMLVideoElement | null>;
 }) {
   const ownRef = useRef<HTMLVideoElement | null>(null);
+  const { t } = useLanguage();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ref = videoRef ?? ownRef;
   useEffect(() => {
@@ -102,7 +104,7 @@ function CameraPane({
       {!stream && (
         <div className="booth-camera-empty">
           <Camera size={32} />
-          <span>Waiting for camera</span>
+          <span>{t('Waiting for camera')}</span>
         </div>
       )}
       <span className="booth-name">{label}</span>
@@ -163,6 +165,7 @@ async function renderStrip(
 export function PhotoBooth(
   props: BoothConnection & { players: PlayerView[]; onExit: () => void },
 ) {
+  const { t } = useLanguage();
   const booth = usePhotoBooth(props);
   const stripRef = useRef<HTMLCanvasElement | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -304,7 +307,7 @@ export function PhotoBooth(
       key={id}
       stream={id === props.selfId ? booth.localStream : booth.remoteStream}
       crop={id === props.selfId ? booth.crop : booth.remoteCrop}
-      label={`${props.players.find((p) => p.id === id)?.name ?? 'Your person'}${id === props.selfId ? ' · you' : ''}`}
+      label={`${props.players.find((p) => p.id === id)?.name ?? t('Your person')}${id === props.selfId ? t(' · you') : ''}`}
       videoRef={id === props.selfId ? booth.videoRef : undefined}
     />
   );
@@ -313,11 +316,12 @@ export function PhotoBooth(
     <section className="booth-shell" aria-labelledby="booth-title">
       <header className="booth-header">
         <div>
-          <p className="pixel-kicker">A little time together</p>
-          <h1 id="booth-title">Photo Booth</h1>
+          <p className="pixel-kicker">{t('A little time together')}</p>
+          <h1 id="booth-title">{t('Photo Booth')}</h1>
         </div>
         <PixelButton onClick={props.onExit}>
-          <ArrowLeft size={17} /> Back to lobby
+          <ArrowLeft size={17} />
+          {t('Back to lobby')}
         </PixelButton>
       </header>
       <div className="booth-layout">
@@ -333,7 +337,10 @@ export function PhotoBooth(
               <div
                 className="booth-countdown"
                 role="timer"
-                aria-label={`${remaining} seconds until photo ${shotIndex + 1}`}
+                aria-label={t('{0} seconds until photo {1}', [
+                  remaining,
+                  shotIndex + 1,
+                ])}
               >
                 {remaining || '✦'}
               </div>
@@ -341,21 +348,21 @@ export function PhotoBooth(
             <div className="booth-viewfinder-footer">
               <span>
                 {complete
-                  ? 'Four little moments, together.'
+                  ? t('Four little moments, together.')
                   : capturing
-                    ? `Photo ${shotIndex + 1} of 4 · strike a pose`
-                    : 'Find your spot. Make it yours.'}
+                    ? t('Photo {0} of 4 · strike a pose', [shotIndex + 1])
+                    : t('Find your spot. Make it yours.')}
               </span>
               <span
                 className={`booth-live ${booth.connected ? 'is-connected' : ''}`}
               >
-                {booth.connected ? 'Connected' : 'Connecting'}
+                {booth.connected ? t('Connected') : t('Connecting')}
               </span>
             </div>
           </div>
           {(booth.error || exportError) && (
             <p className="lobby-error" role="alert">
-              {booth.error ?? exportError}
+              {t(booth.error ?? exportError ?? '')}
             </p>
           )}
           <div className="booth-main-actions">
@@ -367,7 +374,7 @@ export function PhotoBooth(
                 }}
                 disabled={booth.enabling}
               >
-                {booth.enabling ? 'Opening camera…' : 'Enable my camera'}
+                {booth.enabling ? t('Opening camera…') : t('Enable my camera')}
                 <Camera size={17} />
               </PixelButton>
             )}
@@ -375,7 +382,8 @@ export function PhotoBooth(
               onClick={() => booth.command({ kind: 'swap' })}
               disabled={locked || !state}
             >
-              <ArrowLeftRight size={17} /> Switch sides
+              <ArrowLeftRight size={17} />
+              {t('Switch sides')}
             </PixelButton>
             {!locked && (
               <PixelButton
@@ -383,7 +391,7 @@ export function PhotoBooth(
                 disabled={!canReady}
                 variant={ready ? 'secondary' : 'primary'}
               >
-                {ready ? 'Cancel ready' : 'I’m ready'}
+                {ready ? t('Cancel ready') : t('I’m ready')}
               </PixelButton>
             )}
             {!locked && (
@@ -393,56 +401,63 @@ export function PhotoBooth(
                 variant="primary"
               >
                 {bothReady && startRemaining !== null
-                  ? `Start session in ${startRemaining}`
-                  : 'Start session'}
+                  ? t('Start session in {0}', [startRemaining])
+                  : t('Start session')}
               </PixelButton>
             )}
             {locked && (
               <PixelButton onClick={() => booth.command({ kind: 'reset' })}>
                 <RotateCcw size={17} />
-                {capturing ? 'Cancel session' : 'Retake all four'}
+                {capturing ? t('Cancel session') : t('Retake all four')}
               </PixelButton>
             )}
             {(!booth.connected || booth.error) && (
               <PixelButton onClick={booth.reconnect}>
-                Reconnect cameras
+                {t('Reconnect cameras')}
               </PixelButton>
             )}
           </div>
           <p className="booth-help" aria-live="polite">
             {capturing
-              ? `${countdownSeconds} seconds before every photo. Keep this tab open.`
+              ? t('{0} seconds before every photo. Keep this tab open.', [
+                  countdownSeconds,
+                ])
               : complete
-                ? 'Choose a frame and save your strip.'
+                ? t('Choose a frame and save your strip.')
                 : locked
-                  ? 'Receiving your photos… Keep both booths open.'
+                  ? t('Receiving your photos… Keep both booths open.')
                   : !canReady
-                    ? 'Enable both cameras before getting ready.'
+                    ? t('Enable both cameras before getting ready.')
                     : ready
-                      ? `Ready when your person is. Four photos, ${countdownSeconds} seconds to pose for each.`
-                      : 'Choose your sides and framing, then both tap “I’m ready”.'}
+                      ? t(
+                          'Ready when your person is. Four photos, {0} seconds to pose for each.',
+                          [countdownSeconds],
+                        )
+                      : t(
+                          'Choose your sides and framing, then both tap “I’m ready”.',
+                        )}
           </p>
           <fieldset
             className="booth-adjustments"
             disabled={locked || !booth.localStream}
           >
-            <legend>Your camera framing</legend>
+            <legend>{t('Your camera framing')}</legend>
             {(['zoom', 'x', 'y'] as const).map((key) => (
               <label key={key}>
                 <span>
                   {key === 'zoom'
-                    ? 'Zoom'
+                    ? t('Zoom')
                     : key === 'x'
-                      ? 'Horizontal position'
-                      : 'Vertical position'}
+                      ? t('Horizontal position')
+                      : t('Vertical position')}
                 </span>
                 <Slider
                   aria-label={
                     key === 'zoom'
-                      ? 'Zoom'
+                      ? t('Zoom')
                       : key === 'x'
-                        ? 'Horizontal position'
-                        : 'Vertical position'
+                        ? t('Horizontal position')
+                        : t('Vertical position')
                   }
                   value={[booth.crop[key]]}
                   min={key === 'zoom' ? 1 : 0}
@@ -459,7 +474,7 @@ export function PhotoBooth(
               </label>
             ))}
             <label className="booth-mirror" htmlFor="booth-mirror">
-              <span>Mirror my camera</span>
+              <span>{t('Mirror my camera')}</span>
               <Switch
                 id="booth-mirror"
                 checked={booth.crop.mirror}
@@ -471,18 +486,22 @@ export function PhotoBooth(
             </label>
           </fieldset>
         </div>
-        <aside className="booth-strip-panel" aria-label="Your photo strip">
-          <h2>Make it a keepsake</h2>
+        <aside className="booth-strip-panel" aria-label={t('Your photo strip')}>
+          <h2>{t('Make it a keepsake')}</h2>
           {complete && (
             <div className="booth-background-step">
               <output>
                 {background.status === 'processing'
-                  ? `Preparing shared background… ${background.progress}/8 portraits`
+                  ? t('Preparing shared background… {0}/8 portraits', [
+                      background.progress,
+                    ])
                   : background.status === 'ready'
-                    ? 'Your shared background is ready.'
+                    ? t('Your shared background is ready.')
                     : background.status === 'failed'
-                      ? 'We couldn’t finish the background effect. Your original strip is ready to save.'
-                      : 'Keeping your original photos.'}
+                      ? t(
+                          'We couldn’t finish the background effect. Your original strip is ready to save.',
+                        )
+                      : t('Keeping your original photos.')}
               </output>
               {background.status === 'processing' ? (
                 <PixelButton
@@ -494,14 +513,14 @@ export function PhotoBooth(
                     background.skip();
                   }}
                 >
-                  Keep original
+                  {t('Keep original')}
                 </PixelButton>
               ) : background.status === 'ready' ? (
                 <label
                   className="booth-background-toggle"
                   htmlFor="booth-shared-background"
                 >
-                  <span>Shared background</span>
+                  <span>{t('Shared background')}</span>
                   <Switch
                     id="booth-shared-background"
                     checked={usingShared}
@@ -524,18 +543,18 @@ export function PhotoBooth(
                   }}
                 >
                   {background.status === 'failed'
-                    ? 'Try again'
-                    : 'Try shared background'}
+                    ? t('Try again')
+                    : t('Try shared background')}
                 </PixelButton>
               )}
               <small>
                 {usingShared
-                  ? 'Switch off to see or download the original.'
-                  : 'The original strip is available to download.'}
+                  ? t('Switch off to see or download the original.')
+                  : t('The original strip is available to download.')}
               </small>
             </div>
           )}
-          <div className="booth-frame-picker" aria-label="Choose a frame">
+          <div className="booth-frame-picker" aria-label={t('Choose a frame')}>
             {frameIds.map((id) => (
               <button
                 key={id}
@@ -548,7 +567,7 @@ export function PhotoBooth(
                   color: frames[id].ink,
                 }}
               >
-                {frames[id].name}
+                {t(frames[id].name)}
               </button>
             ))}
           </div>
@@ -556,7 +575,11 @@ export function PhotoBooth(
             <canvas
               className="booth-finished-strip"
               ref={stripRef}
-              aria-label={`Your completed strip with ${usingShared ? 'a shared background' : 'the original backgrounds'}`}
+              aria-label={t('Your completed strip with {0}', [
+                usingShared
+                  ? t('a shared background')
+                  : t('the original backgrounds'),
+              ])}
             />
           ) : (
             <div
@@ -577,7 +600,10 @@ export function PhotoBooth(
                         height={600}
                         key={id}
                         src={booth.photos[id][i]}
-                        alt={`Pose ${i + 1}, ${id === leftId ? 'left' : 'right'} person`}
+                        alt={t('Pose {0}, {1} person', [
+                          i + 1,
+                          id === leftId ? 'left' : 'right',
+                        ])}
                       />
                     ) : (
                       <span key={id}>{i + 1}</span>
@@ -585,7 +611,7 @@ export function PhotoBooth(
                   )}
                 </div>
               ))}
-              <small>YOU + ME</small>
+              <small>{t('YOU + ME')}</small>
             </div>
           )}
           <PixelButton
@@ -596,13 +622,14 @@ export function PhotoBooth(
             <Download size={17} />{' '}
             {complete
               ? usingShared
-                ? 'Download shared strip'
-                : 'Download original'
-              : 'Download strip'}
+                ? t('Download shared strip')
+                : t('Download original')
+              : t('Download strip')}
           </PixelButton>
           <p className="booth-help">
-            Photos stay in this session until you download them. Leaving or
-            refreshing clears your copy.
+            {t(
+              'Photos stay in this session until you download them. Leaving or refreshing clears your copy.',
+            )}
           </p>
         </aside>
       </div>

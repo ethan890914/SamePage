@@ -89,3 +89,4 @@ work/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 next-env.d.ts
+.DS_Store
