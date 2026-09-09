@@ -1,7 +1,11 @@
-import type { ConvergeSettings } from '../lib/game-settings';
+import type {
+  ConvergeSettings,
+  PatternRaceSettings,
+} from '../lib/game-settings';
 import type { ConvergeState } from '../lib/converge';
 import type { ActivityId, AvatarId, PlayerView } from '../lib/protocol';
 import type { BoothState } from '../lib/photo-booth';
+import type { PatternRaceState } from '../lib/pattern-race';
 
 export const ROOM_STORAGE_KEY = 'room';
 export const CREATOR_RESERVATION_MS = 60_000;
@@ -23,6 +27,8 @@ export type RoomPlayer = {
 export type StoredRoom = {
   converge?: ConvergeState;
   convergeSettings?: ConvergeSettings;
+  patternRaceSettings?: PatternRaceSettings;
+  patternRace?: PatternRaceState;
   boothCountdownSeconds?: number;
   booth?: BoothState;
   schemaVersion: 1;

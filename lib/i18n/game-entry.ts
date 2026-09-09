@@ -9,6 +9,21 @@ export const gameEntryEnglish = {
   seconds: (value: number) => `${value} seconds`,
   timerHint:
     'Your first word has no timer. This limit applies to later rounds.',
+  raceMode: 'Game mode',
+  raceTime: 'Total game time',
+  minutes: (value: number) => `${value} min`,
+  raceTimeHint: 'Score as many problems as you can before time runs out.',
+  problemCount: 'First to X points',
+  problems: (value: number) => `${value} points`,
+  problemCountHint:
+    'Each correct answer earns one point. First to the target wins.',
+  wordLength: 'Word length clue',
+  wordLengthLimited: 'Limited',
+  wordLengthUnlimited: 'Any length',
+  wordLengthLimitedHint:
+    'The pattern shows every letter slot, such as A _ _ _ E.',
+  wordLengthUnlimitedHint:
+    'The pattern shows only the first and last letters. Any word length is accepted.',
   mode: 'Game mode',
   unlimited: 'Until we match',
   limited: 'Round challenge',
@@ -42,11 +57,11 @@ export const gameEntryEnglish = {
       ],
     },
     'pattern-race': {
-      description: 'A shared word puzzle. A friendly race to the answer.',
+      description: 'A shared timed word puzzle. Think fast, type faster.',
       rules: [
-        'You both see a first letter, last letter, and word length.',
-        'Think of a real word that fits all three clues.',
-        'The first player to submit a valid word wins the round.',
+        'You both see the same first and last letters. Limited mode also shows the number of blanks.',
+        'Type a real word that starts and ends with the letters shown.',
+        'The first valid answer earns one point. Score the most before time expires, or be first to the point target. Questions never repeat within a game.',
       ],
     },
   },

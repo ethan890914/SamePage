@@ -9,7 +9,10 @@ import { PixelButton } from '@/components/pixel/pixel-button';
 import { PixelPanel } from '@/components/pixel/pixel-panel';
 import type { PlayerView } from '@/lib/protocol';
 import type { ReactNode } from 'react';
-import type { ConvergeSettings } from '@/lib/game-settings';
+import type {
+  ConvergeSettings,
+  PatternRaceSettings,
+} from '@/lib/game-settings';
 import { gameEntryEnglish as copy } from '@/lib/i18n/game-entry';
 
 function SettingStepper<T extends string | number>({
@@ -59,6 +62,8 @@ export function GameEntry({
   status,
   settings,
   onSettings,
+  patternRaceSettings,
+  onPatternRaceSettings,
   onReady,
   onExit,
   camera,
@@ -80,6 +85,8 @@ export function GameEntry({
   status: string;
   settings: ConvergeSettings;
   onSettings: (settings: ConvergeSettings) => void;
+  patternRaceSettings: PatternRaceSettings;
+  onPatternRaceSettings: (settings: PatternRaceSettings) => void;
   onReady: (ready: boolean) => void;
   onExit: () => void;
 }) {
@@ -278,7 +285,85 @@ export function GameEntry({
             </p>
           </fieldset>
         ) : (
-          <p className="text-muted-foreground">{copy.defaultSettings}</p>
+          <fieldset
+            disabled={!connected || Boolean(self?.ready)}
+            className="game-entry-settings"
+          >
+            <legend className="sr-only">{copy.settings}</legend>
+            <span className="game-setting-label">{copy.raceMode}</span>
+            <SettingStepper
+              label={copy.raceMode}
+              options={['time', 'problems'] as const}
+              value={patternRaceSettings.mode}
+              format={(mode) =>
+                mode === 'time' ? copy.raceTime : copy.problemCount
+              }
+              onChange={(mode) =>
+                onPatternRaceSettings({ ...patternRaceSettings, mode })
+              }
+            />
+            {patternRaceSettings.mode === 'time' ? (
+              <>
+                <span className="game-setting-label">{copy.raceTime}</span>
+                <SettingStepper
+                  label={copy.raceTime}
+                  options={[3, 5, 10]}
+                  value={patternRaceSettings.timeLimitMinutes}
+                  format={copy.minutes}
+                  onChange={(timeLimitMinutes) =>
+                    onPatternRaceSettings({
+                      ...patternRaceSettings,
+                      timeLimitMinutes,
+                    })
+                  }
+                />
+                <p>{copy.raceTimeHint}</p>
+              </>
+            ) : (
+              <>
+                <span className="game-setting-label">{copy.problemCount}</span>
+                <SettingStepper
+                  label={copy.problemCount}
+                  options={[3, 5, 7, 9, 11]}
+                  value={patternRaceSettings.problemCount}
+                  format={copy.problems}
+                  onChange={(problemCount) =>
+                    onPatternRaceSettings({
+                      ...patternRaceSettings,
+                      problemCount,
+                    })
+                  }
+                />
+                <p>{copy.problemCountHint}</p>
+              </>
+            )}
+            <span className="game-setting-label">{copy.wordLength}</span>
+            <SettingStepper
+              label={copy.wordLength}
+              options={['limited', 'unlimited'] as const}
+              value={patternRaceSettings.wordLengthMode}
+              format={(mode) =>
+                mode === 'limited'
+                  ? copy.wordLengthLimited
+                  : copy.wordLengthUnlimited
+              }
+              onChange={(wordLengthMode) =>
+                onPatternRaceSettings({
+                  ...patternRaceSettings,
+                  wordLengthMode,
+                })
+              }
+            />
+            <p>
+              {patternRaceSettings.wordLengthMode === 'limited'
+                ? copy.wordLengthLimitedHint
+                : copy.wordLengthUnlimitedHint}
+            </p>
+            <p className="game-settings-note">
+              <SlidersHorizontal size={16} aria-hidden="true" />
+              {copy.sharedSettings}
+            </p>
+          </fieldset>
         )}
       </PixelPanel>
     </ActivityEntry>

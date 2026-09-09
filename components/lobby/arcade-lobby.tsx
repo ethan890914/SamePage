@@ -1,6 +1,9 @@
 import { GameEntry } from '@/components/games/game-entry';
 import { useEffect, useState, type ReactNode } from 'react';
-import type { ConvergeSettings } from '@/lib/game-settings';
+import type {
+  ConvergeSettings,
+  PatternRaceSettings,
+} from '@/lib/game-settings';
 import { Check, Copy, LogOut, X } from 'lucide-react';
 import Image from 'next/image';
 import { PixelButton } from '@/components/pixel/pixel-button';
@@ -24,6 +27,8 @@ type Props = {
   onBoothCountdown: (seconds: number) => void;
   convergeSettings: ConvergeSettings;
   onConvergeSettings: (settings: ConvergeSettings) => void;
+  patternRaceSettings: PatternRaceSettings;
+  onPatternRaceSettings: (settings: PatternRaceSettings) => void;
   activeActivity: ActivityId | null;
   copied: boolean;
   players: PlayerView[];
@@ -81,6 +86,8 @@ export function ArcadeLobby({
   onBoothCountdown,
   convergeSettings,
   onConvergeSettings,
+  patternRaceSettings,
+  onPatternRaceSettings,
   activeActivity,
   copied,
   players,
@@ -190,6 +197,8 @@ export function ArcadeLobby({
           status={status}
           settings={convergeSettings}
           onSettings={onConvergeSettings}
+          patternRaceSettings={patternRaceSettings}
+          onPatternRaceSettings={onPatternRaceSettings}
           onReady={(ready) => onSetReady(selectedActivity.id, ready)}
           onExit={() => onExitActivity(selectedActivity.id)}
         />

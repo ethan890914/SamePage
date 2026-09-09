@@ -1,9 +1,20 @@
-import { isConvergeSettings, type ConvergeSettings } from './game-settings';
+import {
+  isConvergeSettings,
+  isPatternRaceSettings,
+  type ConvergeSettings,
+  type PatternRaceSettings,
+} from './game-settings';
 import {
   isConvergeCommand,
   type ConvergeCommand,
   type ConvergePublicState,
 } from './converge';
+import {
+  isPatternRaceCommand,
+  type PatternRaceCommand,
+  type PatternRaceGuessError,
+  type PatternRaceState,
+} from './pattern-race';
 import {
   isBoothCommand,
   type BoothCommand,
@@ -64,6 +75,13 @@ export type CreateRoomError = {
 
 export type ClientMessage =
   | {
+      type: 'pattern_race_command';
+      protocolVersion: typeof PROTOCOL_VERSION;
+      requestId: string;
+      instanceId: string;
+      command: PatternRaceCommand;
+    }
+  | {
       type: 'set_booth_settings';
       protocolVersion: typeof PROTOCOL_VERSION;
       requestId: string;
@@ -83,6 +101,13 @@ export type ClientMessage =
       requestId: string;
       activityId: 'converge';
       settings: ConvergeSettings;
+    }
+  | {
+      type: 'set_pattern_race_settings';
+      protocolVersion: typeof PROTOCOL_VERSION;
+      requestId: string;
+      activityId: 'pattern-race';
+      settings: PatternRaceSettings;
     }
   | {
       type: 'booth_command';
@@ -148,6 +173,16 @@ type ServerEnvelope = {
 
 export type ServerMessage =
   | (ServerEnvelope & {
+      type: 'pattern_race_state';
+      requestId: string;
+      state: PatternRaceState;
+    })
+  | (ServerEnvelope & {
+      type: 'pattern_race_guess_rejected';
+      requestId: string;
+      reason: PatternRaceGuessError;
+    })
+  | (ServerEnvelope & {
       type: 'converge_state';
       requestId: string;
       state: ConvergePublicState;
@@ -191,6 +226,7 @@ export type ServerMessage =
   | (ServerEnvelope & {
       type: 'room_snapshot';
       convergeSettings?: ConvergeSettings;
+      patternRaceSettings?: PatternRaceSettings;
       boothCountdownSeconds?: number;
       roomCode: string;
       revision: number;
@@ -326,6 +362,21 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
     return { success: false, error: 'invalid_message' };
 
   switch (value.type) {
+    case 'pattern_race_command':
+      if (
+        hasOnlyKeys(value, [
+          'type',
+          'protocolVersion',
+          'requestId',
+          'instanceId',
+          'command',
+        ]) &&
+        typeof value.instanceId === 'string' &&
+        value.instanceId.length <= 80 &&
+        isPatternRaceCommand(value.command)
+      )
+        return { success: true, data: value as ClientMessage };
+      break;
     case 'converge_command':
       if (
         hasOnlyKeys(value, [
@@ -352,6 +403,20 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
         ]) &&
         value.activityId === 'converge' &&
         isConvergeSettings(value.settings)
+      )
+        return { success: true, data: value as ClientMessage };
+      break;
+    case 'set_pattern_race_settings':
+      if (
+        hasOnlyKeys(value, [
+          'type',
+          'protocolVersion',
+          'requestId',
+          'activityId',
+          'settings',
+        ]) &&
+        value.activityId === 'pattern-race' &&
+        isPatternRaceSettings(value.settings)
       )
         return { success: true, data: value as ClientMessage };
       break;

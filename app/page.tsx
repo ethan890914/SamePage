@@ -9,6 +9,7 @@ import { PhotoBooth } from '@/components/photo-booth/photo-booth';
 import { EntryCamera } from '@/components/photo-booth/entry-camera';
 import { useEntryCamera } from '@/hooks/use-entry-camera';
 import { ConvergeGame } from '@/components/games/converge-game';
+import { PatternRaceGame } from '@/components/games/pattern-race-game';
 import { isAvatarId, type AvatarId } from '@/lib/protocol';
 
 export default function Home() {
@@ -99,6 +100,19 @@ export default function Home() {
               send={room.sendConverge}
               onExit={() => room.exitActivity('converge')}
             />
+          ) : room.activeActivity === 'pattern-race' &&
+            room.activityInstanceId ? (
+            <PatternRaceGame
+              key={room.activityInstanceId}
+              instanceId={room.activityInstanceId}
+              players={room.players}
+              selfId={room.selfId}
+              state={room.patternRaceState}
+              guessError={room.patternRaceGuessError}
+              status={room.status}
+              send={room.sendPatternRace}
+              onExit={() => room.exitActivity('pattern-race')}
+            />
           ) : room.activeActivity === 'photo-booth' &&
             room.activityInstanceId &&
             room.status === 'connected' &&
@@ -129,6 +143,8 @@ export default function Home() {
               onBoothCountdown={room.updateBoothCountdown}
               convergeSettings={room.convergeSettings}
               onConvergeSettings={room.updateConvergeSettings}
+              patternRaceSettings={room.patternRaceSettings}
+              onPatternRaceSettings={room.updatePatternRaceSettings}
               activeActivity={room.activeActivity}
               copied={copied}
               error={room.error}

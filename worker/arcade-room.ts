@@ -1,4 +1,8 @@
-import { DEFAULT_CONVERGE_SETTINGS } from '../lib/game-settings';
+import {
+  DEFAULT_CONVERGE_SETTINGS,
+  DEFAULT_PATTERN_RACE_SETTINGS,
+  isPatternRaceSettings,
+} from '../lib/game-settings';
 import {
   convergeWordsMatch,
   publicConvergeState,
@@ -6,6 +10,13 @@ import {
 } from '../lib/converge';
 import { DurableObject } from 'cloudflare:workers';
 import { AUTO_START_MS, takeDuration } from '../lib/photo-booth';
+import {
+  generatePatternRacePattern,
+  patternRaceKey,
+  normalizePatternRaceGuess,
+  type PatternRaceState,
+} from '../lib/pattern-race';
+import { validatePatternRaceGuess } from './pattern-dictionary';
 import {
   PROTOCOL_VERSION,
   parseClientMessage,
@@ -74,6 +85,7 @@ export class ArcadeRoom extends DurableObject<Env> {
           room.activeActivity = null;
           room.activeActivityInstanceId = null;
           delete room.converge;
+          delete room.patternRace;
         }
         room.revision += 1;
         await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
@@ -95,6 +107,40 @@ export class ArcadeRoom extends DurableObject<Env> {
         this.expireConvergeRound(room, now);
         await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
         this.broadcastConvergeState(room);
+      }
+      if (
+        room.patternRace?.deadline != null &&
+        room.patternRace.deadline <= now
+      ) {
+        this.finishPatternRace(room);
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        this.broadcastPatternRaceState(room);
+      }
+      if (
+        room.patternRace?.nextProblemAt != null &&
+        room.patternRace.nextProblemAt <= now
+      ) {
+        const state = room.patternRace;
+        state.usedPatterns ??= [patternRaceKey(state.pattern)];
+        const nextPattern = generatePatternRacePattern(
+          state.settings,
+          Math.random,
+          state.usedPatterns,
+        );
+        if (nextPattern) {
+          state.round += 1;
+          state.phase = 'playing';
+          state.pattern = nextPattern;
+          state.usedPatterns.push(patternRaceKey(nextPattern));
+        } else {
+          this.finishPatternRace(room);
+        }
+        state.roundWinnerId = null;
+        state.winningWord = null;
+        state.skipIds = [];
+        state.nextProblemAt = null;
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        this.broadcastPatternRaceState(room);
       }
       await this.scheduleNextAlarm(room);
     });
@@ -210,8 +256,14 @@ export class ArcadeRoom extends DurableObject<Env> {
       return;
     }
 
+    if (parsed.data.type === 'pattern_race_command') {
+      await this.handlePatternRaceCommand(ws, attachment, parsed.data);
+      return;
+    }
+
     if (
       parsed.data.type === 'set_game_settings' ||
+      parsed.data.type === 'set_pattern_race_settings' ||
       parsed.data.type === 'set_booth_settings' ||
       parsed.data.type === 'select_activity' ||
       parsed.data.type === 'set_ready' ||
@@ -425,6 +477,13 @@ export class ArcadeRoom extends DurableObject<Env> {
     player.lastSeenAt = now;
     player.reservedUntil = null;
     if (
+      room.patternRace?.phase === 'round_won' &&
+      room.patternRace.nextProblemAt == null &&
+      room.players.every((candidate) => candidate.connected)
+    ) {
+      room.patternRace.nextProblemAt = now + 3000;
+    }
+    if (
       room.converge?.phase === 'playing' &&
       room.converge.deadline === null &&
       room.converge.pausedRemainingMs !== null &&
@@ -433,6 +492,16 @@ export class ArcadeRoom extends DurableObject<Env> {
     ) {
       room.converge.deadline = now + room.converge.pausedRemainingMs;
       room.converge.pausedRemainingMs = null;
+    }
+    if (
+      room.patternRace?.phase !== 'finished' &&
+      room.patternRace?.deadline === null &&
+      room.patternRace?.pausedRemainingMs !== null &&
+      room.players.length === 2 &&
+      room.players.every((candidate) => candidate.connected)
+    ) {
+      room.patternRace.deadline = now + room.patternRace.pausedRemainingMs;
+      room.patternRace.pausedRemainingMs = null;
     }
     room.revision += 1;
     attachment.authenticated = true;
@@ -466,6 +535,7 @@ export class ArcadeRoom extends DurableObject<Env> {
     });
     this.broadcastSnapshot(room);
     if (room.converge) this.broadcastConvergeState(room);
+    if (room.patternRace) this.broadcastPatternRaceState(room);
   }
 
   private async markDisconnected(ws: WebSocket) {
@@ -486,12 +556,20 @@ export class ArcadeRoom extends DurableObject<Env> {
       player.activeConnectionId = null;
       player.lastSeenAt = Date.now();
       player.reservedUntil = player.lastSeenAt + DISCONNECT_GRACE_MS;
+      if (room.patternRace) room.patternRace.nextProblemAt = null;
       if (room.converge?.deadline != null) {
         room.converge.pausedRemainingMs = Math.max(
           1,
           room.converge.deadline - player.lastSeenAt,
         );
         room.converge.deadline = null;
+      }
+      if (room.patternRace?.deadline != null) {
+        room.patternRace.pausedRemainingMs = Math.max(
+          1,
+          room.patternRace.deadline - player.lastSeenAt,
+        );
+        room.patternRace.deadline = null;
       }
       if (room.booth) {
         room.booth.readyIds = [];
@@ -504,6 +582,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       await this.scheduleNextAlarm(room);
       this.broadcastSnapshot(room);
       if (room.converge) this.broadcastConvergeState(room);
+      if (room.patternRace) this.broadcastPatternRaceState(room);
     });
   }
 
@@ -529,6 +608,7 @@ export class ArcadeRoom extends DurableObject<Env> {
         room.activeActivity = null;
         room.activeActivityInstanceId = null;
         delete room.converge;
+        delete room.patternRace;
       }
       room.revision += 1;
       attachment.authenticated = false;
@@ -552,6 +632,7 @@ export class ArcadeRoom extends DurableObject<Env> {
           | 'set_ready'
           | 'exit_activity'
           | 'set_game_settings'
+          | 'set_pattern_race_settings'
           | 'set_booth_settings';
       }
     >,
@@ -609,6 +690,26 @@ export class ArcadeRoom extends DurableObject<Env> {
           if (candidate.selectedActivity === command.activityId)
             candidate.ready = false;
         }
+      } else if (command.type === 'set_pattern_race_settings') {
+        if (player.selectedActivity !== 'pattern-race') {
+          this.sendCommandRejected(ws, command.requestId, 'not_in_activity');
+          return;
+        }
+        const previous = isPatternRaceSettings(room.patternRaceSettings)
+          ? room.patternRaceSettings
+          : DEFAULT_PATTERN_RACE_SETTINGS;
+        if (
+          previous.mode === command.settings.mode &&
+          previous.timeLimitMinutes === command.settings.timeLimitMinutes &&
+          previous.problemCount === command.settings.problemCount &&
+          previous.wordLengthMode === command.settings.wordLengthMode
+        )
+          return;
+        room.patternRaceSettings = command.settings;
+        for (const candidate of room.players) {
+          if (candidate.selectedActivity === 'pattern-race')
+            candidate.ready = false;
+        }
       } else if (command.type === 'select_activity') {
         const previousActivity = player.selectedActivity;
         if (previousActivity && previousActivity !== command.activityId) {
@@ -639,6 +740,7 @@ export class ArcadeRoom extends DurableObject<Env> {
         room.activeActivityInstanceId = null;
         delete room.booth;
         delete room.converge;
+        delete room.patternRace;
       }
 
       room.revision += 1;
@@ -659,10 +761,19 @@ export class ArcadeRoom extends DurableObject<Env> {
             room.activeActivityInstanceId,
             room.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
           );
+        } else if (command.activityId === 'pattern-race') {
+          room.patternRace = this.newPatternRaceState(
+            room.activeActivityInstanceId,
+            isPatternRaceSettings(room.patternRaceSettings)
+              ? room.patternRaceSettings
+              : DEFAULT_PATTERN_RACE_SETTINGS,
+            room.players.map((candidate) => candidate.id),
+          );
         }
         started = true;
       }
       await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+      await this.scheduleNextAlarm(room);
       this.broadcastSnapshot(room);
       if (started && room.activeActivityInstanceId) {
         this.broadcast({
@@ -675,6 +786,8 @@ export class ArcadeRoom extends DurableObject<Env> {
         });
         if (command.activityId === 'converge')
           this.broadcastConvergeState(room);
+        else if (command.activityId === 'pattern-race')
+          this.broadcastPatternRaceState(room);
       }
     });
   }
@@ -687,6 +800,10 @@ export class ArcadeRoom extends DurableObject<Env> {
     );
     if (room.booth?.autoStartAt != null) deadlines.push(room.booth.autoStartAt);
     if (room.converge?.deadline != null) deadlines.push(room.converge.deadline);
+    if (room.patternRace?.deadline != null)
+      deadlines.push(room.patternRace.deadline);
+    if (room.patternRace?.nextProblemAt != null)
+      deadlines.push(room.patternRace.nextProblemAt);
     if (deadlines.length === 0) {
       await this.ctx.storage.deleteAlarm();
       return;
@@ -709,6 +826,9 @@ export class ArcadeRoom extends DurableObject<Env> {
     const message: ServerMessage = {
       type: 'room_snapshot',
       convergeSettings: room.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
+      patternRaceSettings: isPatternRaceSettings(room.patternRaceSettings)
+        ? room.patternRaceSettings
+        : DEFAULT_PATTERN_RACE_SETTINGS,
       boothCountdownSeconds: room.boothCountdownSeconds ?? 10,
       protocolVersion: PROTOCOL_VERSION,
       serverTime: Date.now(),
@@ -719,6 +839,202 @@ export class ArcadeRoom extends DurableObject<Env> {
       activityInstanceId: room.activeActivityInstanceId,
     };
     this.broadcast(message);
+  }
+
+  private newPatternRaceState(
+    instanceId: string,
+    settings: PatternRaceState['settings'],
+    playerIds: string[],
+  ): PatternRaceState {
+    const pattern = generatePatternRacePattern(settings)!;
+    return {
+      instanceId,
+      settings,
+      phase: 'playing',
+      round: 1,
+      pattern,
+      usedPatterns: [patternRaceKey(pattern)],
+      nextProblemAt: null,
+      skipIds: [],
+      scores: Object.fromEntries(playerIds.map((id) => [id, 0])),
+      deadline:
+        settings.mode === 'time'
+          ? Date.now() + settings.timeLimitMinutes * 60_000
+          : null,
+      pausedRemainingMs: null,
+      roundWinnerId: null,
+      winningWord: null,
+      gameWinnerIds: [],
+      history: [],
+    };
+  }
+
+  private broadcastPatternRaceState(
+    room: StoredRoom,
+    requestId = crypto.randomUUID(),
+  ) {
+    if (!room.patternRace) return;
+    this.broadcast({
+      type: 'pattern_race_state',
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      serverTime: Date.now(),
+      state: room.patternRace,
+    });
+  }
+
+  private finishPatternRace(room: StoredRoom) {
+    const state = room.patternRace;
+    if (!state || state.phase === 'finished') return;
+    const bestScore = Math.max(0, ...Object.values(state.scores));
+    state.phase = 'finished';
+    state.nextProblemAt = null;
+    state.deadline = null;
+    state.pausedRemainingMs = null;
+    state.gameWinnerIds = Object.entries(state.scores)
+      .filter(([, score]) => score === bestScore)
+      .map(([id]) => id);
+  }
+
+  private async handlePatternRaceCommand(
+    ws: WebSocket,
+    attachment: SocketAttachment,
+    message: Extract<ClientMessage, { type: 'pattern_race_command' }>,
+  ) {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+      const player = room?.players.find(
+        (candidate) => candidate.id === attachment.playerId,
+      );
+      if (!room || !player) {
+        this.sendCommandRejected(ws, message.requestId, 'player_not_found');
+        return;
+      }
+      const state = room.patternRace;
+      if (
+        room.activeActivity !== 'pattern-race' ||
+        room.activeActivityInstanceId !== message.instanceId ||
+        player.selectedActivity !== 'pattern-race' ||
+        !state
+      ) {
+        this.sendCommandRejected(ws, message.requestId, 'not_in_activity');
+        return;
+      }
+
+      const now = Date.now();
+      if (
+        state.phase !== 'finished' &&
+        state.deadline !== null &&
+        state.deadline <= now
+      ) {
+        this.finishPatternRace(room);
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        await this.scheduleNextAlarm(room);
+        this.broadcastPatternRaceState(room);
+      }
+
+      if (message.command.kind === 'sync') {
+        this.send(ws, {
+          type: 'pattern_race_state',
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: message.requestId,
+          serverTime: Date.now(),
+          state,
+        });
+        return;
+      }
+
+      if (message.command.kind === 'return_to_setup') {
+        if (state.phase !== 'finished') {
+          this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+          return;
+        }
+        room.patternRaceSettings = state.settings;
+        room.activeActivity = null;
+        room.activeActivityInstanceId = null;
+        delete room.patternRace;
+        for (const candidate of room.players) candidate.ready = false;
+        room.revision += 1;
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        await this.scheduleNextAlarm(room);
+        this.broadcastSnapshot(room);
+        return;
+      }
+
+      if (state.phase === 'finished') {
+        this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+        return;
+      }
+      if (message.command.round !== state.round) {
+        this.sendCommandRejected(ws, message.requestId, 'stale_round');
+        return;
+      }
+
+      if (!room.players.every((candidate) => candidate.connected)) {
+        this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+        return;
+      }
+      if (message.command.kind === 'skip') {
+        if (state.phase !== 'playing') {
+          this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+          return;
+        }
+        state.skipIds ??= [];
+        if (!state.skipIds.includes(player.id)) state.skipIds.push(player.id);
+        if (
+          room.players.length === 2 &&
+          room.players.every((candidate) =>
+            state.skipIds.includes(candidate.id),
+          )
+        ) {
+          state.phase = 'round_won';
+          state.nextProblemAt = now + 3000;
+          state.roundWinnerId = null;
+          state.winningWord = null;
+        }
+      } else {
+        if (state.phase !== 'playing') {
+          this.sendCommandRejected(ws, message.requestId, 'stale_round');
+          return;
+        }
+        const rejection = validatePatternRaceGuess(
+          message.command.word,
+          state.pattern,
+        );
+        if (rejection) {
+          this.send(ws, {
+            type: 'pattern_race_guess_rejected',
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: message.requestId,
+            serverTime: now,
+            reason: rejection,
+          });
+          return;
+        }
+        const winningWord = normalizePatternRaceGuess(message.command.word);
+        state.roundWinnerId = player.id;
+        state.winningWord = winningWord;
+        state.scores[player.id] = (state.scores[player.id] ?? 0) + 1;
+        state.history.push({
+          round: state.round,
+          winnerId: player.id,
+          word: winningWord,
+        });
+        if (
+          state.settings.mode === 'problems' &&
+          state.scores[player.id] >= state.settings.problemCount
+        ) {
+          this.finishPatternRace(room);
+        } else {
+          state.phase = 'round_won';
+          state.nextProblemAt = now + 3000;
+        }
+      }
+
+      await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+      await this.scheduleNextAlarm(room);
+      this.broadcastPatternRaceState(room, message.requestId);
+    });
   }
 
   private newConvergeState(

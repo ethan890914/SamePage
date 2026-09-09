@@ -3,10 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DEFAULT_CONVERGE_SETTINGS,
+  DEFAULT_PATTERN_RACE_SETTINGS,
   type ConvergeSettings,
+  type PatternRaceSettings,
 } from '@/lib/game-settings';
 import type { BoothCommand } from '@/lib/photo-booth';
 import type { ConvergeCommand, ConvergePublicState } from '@/lib/converge';
+import type {
+  PatternRaceCommand,
+  PatternRaceGuessError,
+  PatternRaceState,
+} from '@/lib/pattern-race';
 import {
   PROTOCOL_VERSION,
   type ActivityId,
@@ -113,6 +120,8 @@ export function useRoomConnection() {
   const [convergeSettings, setConvergeSettings] = useState<ConvergeSettings>(
     DEFAULT_CONVERGE_SETTINGS,
   );
+  const [patternRaceSettings, setPatternRaceSettings] =
+    useState<PatternRaceSettings>(DEFAULT_PATTERN_RACE_SETTINGS);
   const [players, setPlayers] = useState<PlayerView[]>([]);
   const [activeActivity, setActiveActivity] = useState<ActivityId | null>(null);
   const [activityInstanceId, setActivityInstanceId] = useState<string | null>(
@@ -122,6 +131,10 @@ export function useRoomConnection() {
   const boothListeners = useRef(new Set<(message: ServerMessage) => void>());
   const [convergeState, setConvergeState] =
     useState<ConvergePublicState | null>(null);
+  const [patternRaceState, setPatternRaceState] =
+    useState<PatternRaceState | null>(null);
+  const [patternRaceGuessError, setPatternRaceGuessError] =
+    useState<PatternRaceGuessError | null>(null);
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const credentialsRef = useRef<ConnectionCredentials | null>(null);
@@ -192,6 +205,15 @@ export function useRoomConnection() {
           setConvergeState(message.state);
           return;
         }
+        if (message.type === 'pattern_race_state') {
+          setPatternRaceState(message.state);
+          setPatternRaceGuessError(null);
+          return;
+        }
+        if (message.type === 'pattern_race_guess_rejected') {
+          setPatternRaceGuessError(message.reason);
+          return;
+        }
 
         if (message.type === 'join_rejected') {
           terminalCloseRef.current = true;
@@ -258,10 +280,17 @@ export function useRoomConnection() {
           setConvergeSettings(
             message.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
           );
+          setPatternRaceSettings(
+            message.patternRaceSettings ?? DEFAULT_PATTERN_RACE_SETTINGS,
+          );
           setBoothCountdownSeconds(message.boothCountdownSeconds ?? 10);
           setActiveActivity(message.activeActivity);
           setActivityInstanceId(message.activityInstanceId ?? null);
           if (message.activeActivity !== 'converge') setConvergeState(null);
+          if (message.activeActivity !== 'pattern-race') {
+            setPatternRaceState(null);
+            setPatternRaceGuessError(null);
+          }
           return;
         }
 
@@ -446,6 +475,8 @@ export function useRoomConnection() {
     setPlayers([]);
     setActiveActivity(null);
     setConvergeState(null);
+    setPatternRaceState(null);
+    setPatternRaceGuessError(null);
     setError(null);
     setStatus('idle');
   }, [clearTimers]);
@@ -462,6 +493,11 @@ export function useRoomConnection() {
             type: 'set_game_settings';
             activityId: 'converge';
             settings: ConvergeSettings;
+          }
+        | {
+            type: 'set_pattern_race_settings';
+            activityId: 'pattern-race';
+            settings: PatternRaceSettings;
           }
         | { type: 'select_activity'; activityId: ActivityId }
         | { type: 'set_ready'; activityId: ActivityId; ready: boolean }
@@ -520,11 +556,31 @@ export function useRoomConnection() {
     },
     [],
   );
+  const sendPatternRace = useCallback(
+    (instanceId: string, command: PatternRaceCommand) => {
+      if (socketRef.current?.readyState !== WebSocket.OPEN) return;
+      if (command.kind === 'submit') setPatternRaceGuessError(null);
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'pattern_race_command',
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId(),
+          instanceId,
+          command,
+        } satisfies ClientMessage),
+      );
+    },
+    [],
+  );
 
   return {
     convergeState,
     sendConverge,
+    patternRaceState,
+    patternRaceGuessError,
+    sendPatternRace,
     convergeSettings,
+    patternRaceSettings,
     boothCountdownSeconds,
     updateBoothCountdown: (countdownSeconds: number) =>
       sendActivityCommand({
@@ -536,6 +592,12 @@ export function useRoomConnection() {
       sendActivityCommand({
         type: 'set_game_settings',
         activityId: 'converge',
+        settings,
+      }),
+    updatePatternRaceSettings: (settings: PatternRaceSettings) =>
+      sendActivityCommand({
+        type: 'set_pattern_race_settings',
+        activityId: 'pattern-race',
         settings,
       }),
     activityInstanceId,
