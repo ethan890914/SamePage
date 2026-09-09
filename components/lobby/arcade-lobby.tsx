@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import type {
   ConvergeSettings,
   PatternRaceSettings,
+  MinesweeperSettings,
 } from '@/lib/game-settings';
 import { Check, Copy, LogOut, X } from 'lucide-react';
 import Image from 'next/image';
@@ -11,6 +12,7 @@ import type { ActivityId, PlayerView } from '@/lib/protocol';
 import { activities } from './activities';
 
 const positions: Record<ActivityId, string> = {
+  minesweeper: 'station-minesweeper',
   converge: 'station-converge',
   'pattern-race': 'station-pattern',
   'photo-booth': 'station-photo',
@@ -28,6 +30,8 @@ type Props = {
   convergeSettings: ConvergeSettings;
   onConvergeSettings: (settings: ConvergeSettings) => void;
   patternRaceSettings: PatternRaceSettings;
+  minesweeperSettings: MinesweeperSettings;
+  onMinesweeperSettings: (settings: MinesweeperSettings) => void;
   onPatternRaceSettings: (settings: PatternRaceSettings) => void;
   activeActivity: ActivityId | null;
   copied: boolean;
@@ -88,6 +92,8 @@ export function ArcadeLobby({
   onConvergeSettings,
   patternRaceSettings,
   onPatternRaceSettings,
+  minesweeperSettings,
+  onMinesweeperSettings,
   activeActivity,
   copied,
   players,
@@ -199,6 +205,8 @@ export function ArcadeLobby({
           onSettings={onConvergeSettings}
           patternRaceSettings={patternRaceSettings}
           onPatternRaceSettings={onPatternRaceSettings}
+          minesweeperSettings={minesweeperSettings}
+          onMinesweeperSettings={onMinesweeperSettings}
           onReady={(ready) => onSetReady(selectedActivity.id, ready)}
           onExit={() => onExitActivity(selectedActivity.id)}
         />
@@ -274,21 +282,27 @@ export function ArcadeLobby({
 
           {startedActivity ? (
             <output className="activity-started-panel">
-              <p className="pixel-kicker">Both ready!</p>
+              <p className="pixel-kicker">
+                {startedActivity.id === 'minesweeper'
+                  ? 'Round in progress'
+                  : 'Both ready!'}
+              </p>
               <h2>{startedActivity.name}</h2>
               <p>
                 {startedActivity.id === 'photo-booth'
                   ? 'Waiting for both of you to reconnect to the booth…'
-                  : 'Your game setup is ready. Gameplay is coming next.'}
+                  : startedActivity.id === 'minesweeper'
+                    ? 'Waiting for the previous round to return to setup. You can join the next round.'
+                    : 'Your game setup is ready. Gameplay is coming next.'}
               </p>
-              {
+              {self?.selectedActivity === startedActivity.id && (
                 <PixelButton
                   disabled={status !== 'connected'}
                   onClick={() => onExitActivity(startedActivity.id)}
                 >
                   Back to lobby
                 </PixelButton>
-              }
+              )}
             </output>
           ) : null}
         </div>

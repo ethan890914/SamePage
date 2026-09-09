@@ -1,3 +1,47 @@
+export type MinesweeperSettings = {
+  rows: number;
+  columns: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  startingPlayer: 'player1' | 'player2' | 'random';
+};
+
+export const DEFAULT_MINESWEEPER_SETTINGS: MinesweeperSettings = {
+  rows: 9,
+  columns: 9,
+  difficulty: 'easy',
+  startingPlayer: 'random',
+};
+
+export const MINESWEEPER_DENSITY = {
+  easy: 0.125,
+  medium: 0.16,
+  hard: 0.2,
+} as const;
+
+export function minesweeperMineCount(settings: MinesweeperSettings) {
+  return Math.round(
+    settings.rows * settings.columns * MINESWEEPER_DENSITY[settings.difficulty],
+  );
+}
+
+export function isMinesweeperSettings(
+  value: unknown,
+): value is MinesweeperSettings {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const settings = value as Record<string, unknown>;
+  return (
+    Object.keys(settings).length === 4 &&
+    Number.isInteger(settings.rows) &&
+    (settings.rows as number) >= 8 &&
+    (settings.rows as number) <= 30 &&
+    Number.isInteger(settings.columns) &&
+    (settings.columns as number) >= 8 &&
+    (settings.columns as number) <= 30 &&
+    ['easy', 'medium', 'hard'].includes(settings.difficulty as string) &&
+    ['player1', 'player2', 'random'].includes(settings.startingPlayer as string)
+  );
+}
+
 export type ConvergeSettings = {
   timeLimitSeconds: number;
   mode: 'unlimited' | 'limited';

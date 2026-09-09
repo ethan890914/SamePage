@@ -1,6 +1,8 @@
 import {
   isConvergeSettings,
   isPatternRaceSettings,
+  isMinesweeperSettings,
+  type MinesweeperSettings,
   type ConvergeSettings,
   type PatternRaceSettings,
 } from './game-settings';
@@ -20,9 +22,19 @@ import {
   type BoothCommand,
   type BoothState,
 } from './photo-booth';
+import {
+  isMinesweeperCommand,
+  type MinesweeperCommand,
+  type MinesweeperPublicState,
+} from './minesweeper';
 export const PROTOCOL_VERSION = 1 as const;
 
-export const activityIds = ['converge', 'pattern-race', 'photo-booth'] as const;
+export const activityIds = [
+  'converge',
+  'pattern-race',
+  'photo-booth',
+  'minesweeper',
+] as const;
 export type ActivityId = (typeof activityIds)[number];
 
 export const avatarIds = [
@@ -74,6 +86,20 @@ export type CreateRoomError = {
 };
 
 export type ClientMessage =
+  | {
+      type: 'minesweeper_command';
+      protocolVersion: typeof PROTOCOL_VERSION;
+      requestId: string;
+      instanceId: string;
+      command: MinesweeperCommand;
+    }
+  | {
+      type: 'set_minesweeper_settings';
+      protocolVersion: typeof PROTOCOL_VERSION;
+      requestId: string;
+      activityId: 'minesweeper';
+      settings: MinesweeperSettings;
+    }
   | {
       type: 'pattern_race_command';
       protocolVersion: typeof PROTOCOL_VERSION;
@@ -173,6 +199,11 @@ type ServerEnvelope = {
 
 export type ServerMessage =
   | (ServerEnvelope & {
+      type: 'minesweeper_state';
+      requestId: string;
+      state: MinesweeperPublicState;
+    })
+  | (ServerEnvelope & {
       type: 'pattern_race_state';
       requestId: string;
       state: PatternRaceState;
@@ -227,6 +258,7 @@ export type ServerMessage =
       type: 'room_snapshot';
       convergeSettings?: ConvergeSettings;
       patternRaceSettings?: PatternRaceSettings;
+      minesweeperSettings?: MinesweeperSettings;
       boothCountdownSeconds?: number;
       roomCode: string;
       revision: number;
@@ -249,6 +281,8 @@ export type ServerMessage =
         | 'activity_already_started'
         | 'player_not_found'
         | 'stale_round'
+        | 'not_your_turn'
+        | 'invalid_move'
         | 'already_submitted'
         | 'game_not_playing';
     })
@@ -362,6 +396,36 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
     return { success: false, error: 'invalid_message' };
 
   switch (value.type) {
+    case 'minesweeper_command':
+      if (
+        hasOnlyKeys(value, [
+          'type',
+          'protocolVersion',
+          'requestId',
+          'instanceId',
+          'command',
+        ]) &&
+        typeof value.instanceId === 'string' &&
+        value.instanceId.length > 0 &&
+        value.instanceId.length <= 80 &&
+        isMinesweeperCommand(value.command)
+      )
+        return { success: true, data: value as ClientMessage };
+      break;
+    case 'set_minesweeper_settings':
+      if (
+        hasOnlyKeys(value, [
+          'type',
+          'protocolVersion',
+          'requestId',
+          'activityId',
+          'settings',
+        ]) &&
+        value.activityId === 'minesweeper' &&
+        isMinesweeperSettings(value.settings)
+      )
+        return { success: true, data: value as ClientMessage };
+      break;
     case 'pattern_race_command':
       if (
         hasOnlyKeys(value, [

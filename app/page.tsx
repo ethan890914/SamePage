@@ -10,6 +10,7 @@ import { EntryCamera } from '@/components/photo-booth/entry-camera';
 import { useEntryCamera } from '@/hooks/use-entry-camera';
 import { ConvergeGame } from '@/components/games/converge-game';
 import { PatternRaceGame } from '@/components/games/pattern-race-game';
+import { MinesweeperGame } from '@/components/games/minesweeper-game';
 import { isAvatarId, type AvatarId } from '@/lib/protocol';
 
 export default function Home() {
@@ -113,6 +114,25 @@ export default function Home() {
               send={room.sendPatternRace}
               onExit={() => room.exitActivity('pattern-race')}
             />
+          ) : room.activeActivity === 'minesweeper' &&
+            room.activityInstanceId &&
+            room.players.some(
+              (player) =>
+                player.id === room.selfId &&
+                player.selectedActivity === 'minesweeper',
+            ) ? (
+            <MinesweeperGame
+              key={room.activityInstanceId}
+              instanceId={room.activityInstanceId}
+              players={room.players}
+              selfId={room.selfId}
+              state={room.minesweeperState}
+              status={room.status}
+              error={room.error}
+              onClearError={room.clearError}
+              send={room.sendMinesweeper}
+              onExit={() => room.exitActivity('minesweeper')}
+            />
           ) : room.activeActivity === 'photo-booth' &&
             room.activityInstanceId &&
             room.status === 'connected' &&
@@ -145,6 +165,8 @@ export default function Home() {
               onConvergeSettings={room.updateConvergeSettings}
               patternRaceSettings={room.patternRaceSettings}
               onPatternRaceSettings={room.updatePatternRaceSettings}
+              minesweeperSettings={room.minesweeperSettings}
+              onMinesweeperSettings={room.updateMinesweeperSettings}
               activeActivity={room.activeActivity}
               copied={copied}
               error={room.error}

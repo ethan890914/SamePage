@@ -2,6 +2,7 @@ import {
   DEFAULT_CONVERGE_SETTINGS,
   DEFAULT_PATTERN_RACE_SETTINGS,
   isPatternRaceSettings,
+  DEFAULT_MINESWEEPER_SETTINGS,
 } from '../lib/game-settings';
 import {
   convergeWordsMatch,
@@ -17,6 +18,11 @@ import {
   type PatternRaceState,
 } from '../lib/pattern-race';
 import { validatePatternRaceGuess } from './pattern-dictionary';
+import {
+  applyMinesweeperMove,
+  newMinesweeperState,
+  publicMinesweeperState,
+} from '../lib/minesweeper';
 import {
   PROTOCOL_VERSION,
   parseClientMessage,
@@ -81,15 +87,24 @@ export class ArcadeRoom extends DurableObject<Env> {
           )
             player.ready = false;
         }
-        if (room.players.length < 2) {
+        if (
+          room.players.length < 2 &&
+          room.activeActivity === 'minesweeper' &&
+          room.minesweeper &&
+          room.players.length > 0
+        ) {
+          this.abandonMinesweeper(room);
+        } else if (room.players.length < 2) {
           room.activeActivity = null;
           room.activeActivityInstanceId = null;
           delete room.converge;
           delete room.patternRace;
+          delete room.minesweeper;
         }
         room.revision += 1;
         await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
         this.broadcastSnapshot(room);
+        if (room.minesweeper) this.broadcastMinesweeperState(room);
       }
       if (room.booth?.autoStartAt != null && room.booth.autoStartAt <= now) {
         room.booth.autoStartAt = null;
@@ -256,6 +271,11 @@ export class ArcadeRoom extends DurableObject<Env> {
       return;
     }
 
+    if (parsed.data.type === 'minesweeper_command') {
+      await this.handleMinesweeperCommand(ws, attachment, parsed.data);
+      return;
+    }
+
     if (parsed.data.type === 'pattern_race_command') {
       await this.handlePatternRaceCommand(ws, attachment, parsed.data);
       return;
@@ -264,6 +284,7 @@ export class ArcadeRoom extends DurableObject<Env> {
     if (
       parsed.data.type === 'set_game_settings' ||
       parsed.data.type === 'set_pattern_race_settings' ||
+      parsed.data.type === 'set_minesweeper_settings' ||
       parsed.data.type === 'set_booth_settings' ||
       parsed.data.type === 'select_activity' ||
       parsed.data.type === 'set_ready' ||
@@ -442,6 +463,23 @@ export class ArcadeRoom extends DurableObject<Env> {
         player.connected ||
         (player.reservedUntil !== null && player.reservedUntil > now),
     );
+    // A join can arrive before the expiry alarm. Reconcile this game's
+    // participants here as well so a replacement never inherits a live board.
+    if (
+      room.minesweeper &&
+      room.activeActivity === 'minesweeper' &&
+      !room.minesweeper.playerIds.every((id) =>
+        room.players.some((candidate) => candidate.id === id),
+      )
+    ) {
+      this.abandonMinesweeper(room);
+      for (const candidate of room.players) candidate.ready = false;
+      if (room.players.length === 0) {
+        room.activeActivity = null;
+        room.activeActivityInstanceId = null;
+        delete room.minesweeper;
+      }
+    }
     let player = room.players.find(
       (candidate) => candidate.sessionTokenHash === tokenHash,
     );
@@ -536,6 +574,7 @@ export class ArcadeRoom extends DurableObject<Env> {
     this.broadcastSnapshot(room);
     if (room.converge) this.broadcastConvergeState(room);
     if (room.patternRace) this.broadcastPatternRaceState(room);
+    if (room.minesweeper) this.broadcastMinesweeperState(room);
   }
 
   private async markDisconnected(ws: WebSocket) {
@@ -604,11 +643,19 @@ export class ArcadeRoom extends DurableObject<Env> {
             remaining.ready = false;
         }
       }
-      if (room.players.length < 2) {
+      if (
+        room.players.length < 2 &&
+        room.activeActivity === 'minesweeper' &&
+        room.minesweeper &&
+        room.players.length > 0
+      ) {
+        this.abandonMinesweeper(room);
+      } else if (room.players.length < 2) {
         room.activeActivity = null;
         room.activeActivityInstanceId = null;
         delete room.converge;
         delete room.patternRace;
+        delete room.minesweeper;
       }
       room.revision += 1;
       attachment.authenticated = false;
@@ -618,6 +665,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       await this.scheduleNextAlarm(room);
       this.broadcastSnapshot(room);
       ws.close(1000, 'Left room');
+      if (room.minesweeper) this.broadcastMinesweeperState(room);
     });
   }
 
@@ -633,6 +681,7 @@ export class ArcadeRoom extends DurableObject<Env> {
           | 'exit_activity'
           | 'set_game_settings'
           | 'set_pattern_race_settings'
+          | 'set_minesweeper_settings'
           | 'set_booth_settings';
       }
     >,
@@ -642,7 +691,11 @@ export class ArcadeRoom extends DurableObject<Env> {
       const player = room?.players.find(
         (candidate) => candidate.id === attachment.playerId,
       );
-      if (!room || !player) {
+      if (
+        !room ||
+        !player ||
+        player.activeConnectionId !== attachment.connectionId
+      ) {
         this.sendCommandRejected(ws, command.requestId, 'player_not_found');
         return;
       }
@@ -661,7 +714,26 @@ export class ArcadeRoom extends DurableObject<Env> {
         return;
       }
 
-      if (command.type === 'set_booth_settings') {
+      if (command.type === 'set_minesweeper_settings') {
+        if (player.selectedActivity !== 'minesweeper') {
+          this.sendCommandRejected(ws, command.requestId, 'not_in_activity');
+          return;
+        }
+        const previous =
+          room.minesweeperSettings ?? DEFAULT_MINESWEEPER_SETTINGS;
+        if (
+          previous.rows === command.settings.rows &&
+          previous.columns === command.settings.columns &&
+          previous.difficulty === command.settings.difficulty &&
+          previous.startingPlayer === command.settings.startingPlayer
+        )
+          return;
+        room.minesweeperSettings = command.settings;
+        for (const candidate of room.players) {
+          if (candidate.selectedActivity === 'minesweeper')
+            candidate.ready = false;
+        }
+      } else if (command.type === 'set_booth_settings') {
         if (player.selectedActivity !== 'photo-booth') {
           this.sendCommandRejected(ws, command.requestId, 'not_in_activity');
           return;
@@ -741,6 +813,7 @@ export class ArcadeRoom extends DurableObject<Env> {
         delete room.booth;
         delete room.converge;
         delete room.patternRace;
+        delete room.minesweeper;
       }
 
       room.revision += 1;
@@ -760,6 +833,12 @@ export class ArcadeRoom extends DurableObject<Env> {
           room.converge = this.newConvergeState(
             room.activeActivityInstanceId,
             room.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
+          );
+        } else if (command.activityId === 'minesweeper') {
+          room.minesweeper = newMinesweeperState(
+            room.activeActivityInstanceId,
+            room.minesweeperSettings ?? DEFAULT_MINESWEEPER_SETTINGS,
+            [room.players[0].id, room.players[1].id],
           );
         } else if (command.activityId === 'pattern-race') {
           room.patternRace = this.newPatternRaceState(
@@ -788,6 +867,8 @@ export class ArcadeRoom extends DurableObject<Env> {
           this.broadcastConvergeState(room);
         else if (command.activityId === 'pattern-race')
           this.broadcastPatternRaceState(room);
+        else if (command.activityId === 'minesweeper')
+          this.broadcastMinesweeperState(room);
       }
     });
   }
@@ -826,6 +907,8 @@ export class ArcadeRoom extends DurableObject<Env> {
     const message: ServerMessage = {
       type: 'room_snapshot',
       convergeSettings: room.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
+      minesweeperSettings:
+        room.minesweeperSettings ?? DEFAULT_MINESWEEPER_SETTINGS,
       patternRaceSettings: isPatternRaceSettings(room.patternRaceSettings)
         ? room.patternRaceSettings
         : DEFAULT_PATTERN_RACE_SETTINGS,
@@ -839,6 +922,139 @@ export class ArcadeRoom extends DurableObject<Env> {
       activityInstanceId: room.activeActivityInstanceId,
     };
     this.broadcast(message);
+  }
+
+  private abandonMinesweeper(room: StoredRoom) {
+    const state = room.minesweeper;
+    if (!state || state.phase === 'finished') return;
+    state.phase = 'finished';
+    state.result = 'abandoned';
+    state.winnerId = null;
+    state.replayReadyIds = [];
+    state.revision += 1;
+  }
+
+  private broadcastMinesweeperState(
+    room: StoredRoom,
+    requestId: string = crypto.randomUUID(),
+  ) {
+    if (!room.minesweeper) return;
+    this.broadcast({
+      type: 'minesweeper_state',
+      protocolVersion: PROTOCOL_VERSION,
+      requestId,
+      serverTime: Date.now(),
+      state: publicMinesweeperState(room.minesweeper),
+    });
+  }
+
+  private async handleMinesweeperCommand(
+    ws: WebSocket,
+    attachment: SocketAttachment,
+    message: Extract<ClientMessage, { type: 'minesweeper_command' }>,
+  ) {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+      const player = room?.players.find(
+        (candidate) => candidate.id === attachment.playerId,
+      );
+      if (
+        !room ||
+        !player ||
+        player.activeConnectionId !== attachment.connectionId
+      ) {
+        this.sendCommandRejected(ws, message.requestId, 'player_not_found');
+        return;
+      }
+      const state = room.minesweeper;
+      if (
+        !state ||
+        room.activeActivity !== 'minesweeper' ||
+        room.activeActivityInstanceId !== message.instanceId ||
+        player.selectedActivity !== 'minesweeper' ||
+        !state.playerIds.includes(player.id)
+      ) {
+        this.sendCommandRejected(ws, message.requestId, 'not_in_activity');
+        return;
+      }
+      const command = message.command;
+      if (command.kind === 'sync') {
+        this.send(ws, {
+          type: 'minesweeper_state',
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: message.requestId,
+          serverTime: Date.now(),
+          state: publicMinesweeperState(state),
+        });
+        return;
+      }
+      if (command.round !== state.round) {
+        this.sendCommandRejected(ws, message.requestId, 'stale_round');
+        return;
+      }
+      if (command.kind === 'return_to_setup') {
+        if (state.phase !== 'finished') {
+          this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+          return;
+        }
+        room.minesweeperSettings = state.settings;
+        room.activeActivity = null;
+        room.activeActivityInstanceId = null;
+        delete room.minesweeper;
+        for (const candidate of room.players) candidate.ready = false;
+        room.revision += 1;
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        this.broadcastSnapshot(room);
+        return;
+      }
+      if (
+        room.players.length !== 2 ||
+        !room.players.every(
+          (candidate) =>
+            candidate.connected &&
+            candidate.selectedActivity === 'minesweeper' &&
+            state.playerIds.includes(candidate.id),
+        )
+      ) {
+        this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+        return;
+      }
+      if (command.kind === 'replay_ready') {
+        if (state.phase !== 'finished' || state.result === 'abandoned') {
+          this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+          return;
+        }
+        state.replayReadyIds = state.replayReadyIds.filter(
+          (id) => id !== player.id,
+        );
+        if (command.ready) state.replayReadyIds.push(player.id);
+        state.revision += 1;
+        if (state.playerIds.every((id) => state.replayReadyIds.includes(id))) {
+          room.minesweeper = newMinesweeperState(
+            state.instanceId,
+            state.settings,
+            state.playerIds,
+            state.round + 1,
+          );
+        }
+      } else {
+        const rejection = applyMinesweeperMove(state, player.id, command);
+        if (rejection) {
+          this.sendCommandRejected(ws, message.requestId, rejection);
+          // Return the authoritative board so a stale client can recover.
+          this.send(ws, {
+            type: 'minesweeper_state',
+            protocolVersion: PROTOCOL_VERSION,
+            requestId: message.requestId,
+            serverTime: Date.now(),
+            state: publicMinesweeperState(state),
+          });
+          return;
+        }
+      }
+      await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+      this.broadcastMinesweeperState(room, message.requestId);
+    });
   }
 
   private newPatternRaceState(

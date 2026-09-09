@@ -4,10 +4,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DEFAULT_CONVERGE_SETTINGS,
   DEFAULT_PATTERN_RACE_SETTINGS,
+  DEFAULT_MINESWEEPER_SETTINGS,
+  type MinesweeperSettings,
   type ConvergeSettings,
   type PatternRaceSettings,
 } from '@/lib/game-settings';
 import type { BoothCommand } from '@/lib/photo-booth';
+import type {
+  MinesweeperCommand,
+  MinesweeperPublicState,
+} from '@/lib/minesweeper';
 import type { ConvergeCommand, ConvergePublicState } from '@/lib/converge';
 import type {
   PatternRaceCommand,
@@ -114,6 +120,10 @@ function readStoredSession(): StoredSession | null {
 }
 
 export function useRoomConnection() {
+  const [minesweeperSettings, setMinesweeperSettings] =
+    useState<MinesweeperSettings>(DEFAULT_MINESWEEPER_SETTINGS);
+  const [minesweeperState, setMinesweeperState] =
+    useState<MinesweeperPublicState | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [selfId, setSelfId] = useState<string | null>(null);
@@ -198,11 +208,25 @@ export function useRoomConnection() {
           return;
         }
         if (message.type.startsWith('booth_')) {
+          // oxlint-disable-next-line react/react-compiler -- the ref-backed listener registry is intentionally stable across socket callbacks.
           for (const listener of boothListeners.current) listener(message);
           return;
         }
         if (message.type === 'converge_state') {
           setConvergeState(message.state);
+          return;
+        }
+        if (message.type === 'minesweeper_state') {
+          setMinesweeperState((previous) => {
+            if (
+              previous?.instanceId === message.state.instanceId &&
+              (previous.round > message.state.round ||
+                (previous.round === message.state.round &&
+                  previous.revision > message.state.revision))
+            )
+              return previous;
+            return message.state;
+          });
           return;
         }
         if (message.type === 'pattern_race_state') {
@@ -284,6 +308,11 @@ export function useRoomConnection() {
             message.patternRaceSettings ?? DEFAULT_PATTERN_RACE_SETTINGS,
           );
           setBoothCountdownSeconds(message.boothCountdownSeconds ?? 10);
+          setMinesweeperSettings(
+            message.minesweeperSettings ?? DEFAULT_MINESWEEPER_SETTINGS,
+          );
+          if (message.activeActivity !== 'minesweeper')
+            setMinesweeperState(null);
           setActiveActivity(message.activeActivity);
           setActivityInstanceId(message.activityInstanceId ?? null);
           if (message.activeActivity !== 'converge') setConvergeState(null);
@@ -308,6 +337,10 @@ export function useRoomConnection() {
               'An activity has already started in this arcade.',
             player_not_found: 'Your player session is no longer available.',
             stale_round: 'That round has ended. Try the current round.',
+            not_your_turn:
+              'Wait for your turn before revealing or flagging a tile.',
+            invalid_move:
+              'That tile cannot be opened. To open neighbors, match the number with adjacent flags.',
             already_submitted: 'Your word is already locked in.',
             game_not_playing: 'That action is not available right now.',
           };
@@ -359,7 +392,7 @@ export function useRoomConnection() {
         }
       });
     },
-    [clearTimers, boothListeners],
+    [clearTimers],
   );
 
   useEffect(() => {
@@ -476,6 +509,7 @@ export function useRoomConnection() {
     setActiveActivity(null);
     setConvergeState(null);
     setPatternRaceState(null);
+    setMinesweeperState(null);
     setPatternRaceGuessError(null);
     setError(null);
     setStatus('idle');
@@ -484,6 +518,11 @@ export function useRoomConnection() {
   const sendActivityCommand = useCallback(
     (
       command:
+        | {
+            type: 'set_minesweeper_settings';
+            activityId: 'minesweeper';
+            settings: MinesweeperSettings;
+          }
         | {
             type: 'set_booth_settings';
             activityId: 'photo-booth';
@@ -573,7 +612,33 @@ export function useRoomConnection() {
     [],
   );
 
+  const sendMinesweeper = useCallback(
+    (instanceId: string, command: MinesweeperCommand) => {
+      if (socketRef.current?.readyState !== WebSocket.OPEN) return;
+      setError(null);
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'minesweeper_command',
+          protocolVersion: PROTOCOL_VERSION,
+          requestId: requestId(),
+          instanceId,
+          command,
+        } satisfies ClientMessage),
+      );
+    },
+    [],
+  );
+
   return {
+    minesweeperSettings,
+    minesweeperState,
+    sendMinesweeper,
+    updateMinesweeperSettings: (settings: MinesweeperSettings) =>
+      sendActivityCommand({
+        type: 'set_minesweeper_settings',
+        activityId: 'minesweeper',
+        settings,
+      }),
     convergeState,
     sendConverge,
     patternRaceState,

@@ -1,10 +1,7 @@
 import { ActivityEntry } from '@/components/games/activity-entry';
-import {
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  SlidersHorizontal,
-} from 'lucide-react';
+import { MinesweeperSettingsFields } from '@/components/games/minesweeper-settings';
+import { Check, SlidersHorizontal } from 'lucide-react';
+import { SettingStepper } from '@/components/pixel/setting-stepper';
 import { PixelButton } from '@/components/pixel/pixel-button';
 import { PixelPanel } from '@/components/pixel/pixel-panel';
 import type { PlayerView } from '@/lib/protocol';
@@ -12,48 +9,9 @@ import type { ReactNode } from 'react';
 import type {
   ConvergeSettings,
   PatternRaceSettings,
+  MinesweeperSettings,
 } from '@/lib/game-settings';
 import { gameEntryEnglish as copy } from '@/lib/i18n/game-entry';
-
-function SettingStepper<T extends string | number>({
-  label,
-  options,
-  value,
-  format,
-  onChange,
-}: {
-  label: string;
-  options: readonly T[];
-  value: T;
-  format: (value: T) => string;
-  onChange: (value: T) => void;
-}) {
-  const index = Math.max(0, options.indexOf(value));
-  const select = (offset: number) => {
-    const nextIndex = (index + offset + options.length) % options.length;
-    onChange(options[nextIndex]);
-  };
-
-  return (
-    <div className="game-setting-stepper" aria-label={label}>
-      <button
-        type="button"
-        onClick={() => select(-1)}
-        aria-label={`Previous ${label}`}
-      >
-        <ChevronLeft size={20} aria-hidden="true" />
-      </button>
-      <output aria-live="polite">{format(value)}</output>
-      <button
-        type="button"
-        onClick={() => select(1)}
-        aria-label={`Next ${label}`}
-      >
-        <ChevronRight size={20} aria-hidden="true" />
-      </button>
-    </div>
-  );
-}
 
 export function GameEntry({
   activityId,
@@ -64,6 +22,8 @@ export function GameEntry({
   onSettings,
   patternRaceSettings,
   onPatternRaceSettings,
+  minesweeperSettings,
+  onMinesweeperSettings,
   onReady,
   onExit,
   camera,
@@ -73,7 +33,7 @@ export function GameEntry({
   countdownSeconds = 10,
   onCountdown,
 }: {
-  activityId: 'converge' | 'pattern-race' | 'photo-booth';
+  activityId: 'converge' | 'pattern-race' | 'photo-booth' | 'minesweeper';
   camera?: ReactNode;
   cameraReady?: boolean;
   cameraBusy?: boolean;
@@ -87,6 +47,8 @@ export function GameEntry({
   onSettings: (settings: ConvergeSettings) => void;
   patternRaceSettings: PatternRaceSettings;
   onPatternRaceSettings: (settings: PatternRaceSettings) => void;
+  minesweeperSettings: MinesweeperSettings;
+  onMinesweeperSettings: (settings: MinesweeperSettings) => void;
   onReady: (ready: boolean) => void;
   onExit: () => void;
 }) {
@@ -100,7 +62,17 @@ export function GameEntry({
             'Pick a frame, switch sides, and pose for four photos. Download your strip with the original or shared background.',
           ],
         }
-      : copy.games[activityId];
+      : activityId === 'minesweeper'
+        ? {
+            description: 'One board. Take turns. Watch your step.',
+            rules: [
+              'Take turns revealing one tile. Numbers count mines in the eight neighboring tiles; empty areas open automatically as one turn.',
+              'Hit a mine and you lose. Reveal the final safe tile and you win. The first reveal always opens a safe area.',
+              'Flag suspected mines on your turn without spending it. Flags are shared notes and may be wrong.',
+              'Activate an open number to reveal its other neighbors when adjacent flags match. Incorrect flags can cause an explosion.',
+            ],
+          }
+        : copy.games[activityId];
   const self = players.find((player) => player.id === selfId);
   const connected = status === 'connected';
   const bothHere =
@@ -149,9 +121,11 @@ export function GameEntry({
       title={
         activityId === 'converge'
           ? 'Converge'
-          : activityId === 'photo-booth'
-            ? 'Photo Booth'
-            : 'Pattern Race'
+          : activityId === 'minesweeper'
+            ? 'Minesweeper'
+            : activityId === 'photo-booth'
+              ? 'Photo Booth'
+              : 'Pattern Race'
       }
       subtitle={game.description}
       eyebrow={copy.eyebrow}
@@ -214,7 +188,15 @@ export function GameEntry({
         </ol>
       </PixelPanel>
       <PixelPanel title={copy.settings}>
-        {activityId === 'photo-booth' ? (
+        {activityId === 'minesweeper' ? (
+          <MinesweeperSettingsFields
+            key={`${minesweeperSettings.rows}x${minesweeperSettings.columns}`}
+            settings={minesweeperSettings}
+            players={players}
+            disabled={!connected || Boolean(self?.ready)}
+            onChange={onMinesweeperSettings}
+          />
+        ) : activityId === 'photo-booth' ? (
           <div className="game-entry-settings">
             <fieldset disabled={!connected || Boolean(self?.ready)}>
               <legend className="game-setting-label">

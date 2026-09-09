@@ -17,6 +17,7 @@
     "lint": "oxlint",
     "test:realtime": "node scripts/realtime-smoke.mjs",
     "test:pattern-race": "node --experimental-strip-types scripts/pattern-race-smoke.mjs",
+    "test:minesweeper": "node scripts/run-ts-smoke.mjs scripts/minesweeper-smoke.mjs",
     "format": "oxfmt"
   },
   "dependencies": {

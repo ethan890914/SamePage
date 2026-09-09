@@ -1,11 +1,13 @@
 import type {
   ConvergeSettings,
   PatternRaceSettings,
+  MinesweeperSettings,
 } from '../lib/game-settings';
 import type { ConvergeState } from '../lib/converge';
 import type { ActivityId, AvatarId, PlayerView } from '../lib/protocol';
 import type { BoothState } from '../lib/photo-booth';
 import type { PatternRaceState } from '../lib/pattern-race';
+import type { MinesweeperState } from '../lib/minesweeper';
 
 export const ROOM_STORAGE_KEY = 'room';
 export const CREATOR_RESERVATION_MS = 60_000;
@@ -25,6 +27,8 @@ export type RoomPlayer = {
 };
 
 export type StoredRoom = {
+  minesweeperSettings?: MinesweeperSettings;
+  minesweeper?: MinesweeperState;
   converge?: ConvergeState;
   convergeSettings?: ConvergeSettings;
   patternRaceSettings?: PatternRaceSettings;

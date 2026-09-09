@@ -1,5 +1,7 @@
 # Same Page — Agent Build Spec (V1)
 
+For UI work, follow [the design guidelines](docs/design.md). Fixed-choice settings use inline `< value >` arrow selectors, not dropdowns.
+
 ## 1. Concept
 
 A private, two-person web portal opened during a video call for short (2–20 min)

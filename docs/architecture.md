@@ -28,6 +28,8 @@ payload size and the Durable Object validates every WebSocket command.
 
 ## Frontend structure
 
+Follow [the design guidelines](design.md) for settings controls and game typography, including the shared `< value >` selector pattern for future features.
+
 Reusable visual primitives live in `components/pixel`. Global semantic colors, type roles, pixel borders, focus styles, and motion rules live in `app/globals.css`. Activity screens should compose those primitives instead of introducing isolated colors, shadows, or input styles.
 
 ## Delivery slices

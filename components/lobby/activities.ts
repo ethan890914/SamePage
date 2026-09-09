@@ -4,7 +4,7 @@ export type LobbyActivity = {
   id: ActivityId;
   name: string;
   detail: string;
-  tone: 'pink' | 'cyan' | 'yellow';
+  tone: 'pink' | 'cyan' | 'yellow' | 'green';
 };
 
 export const activities: LobbyActivity[] = [
@@ -25,5 +25,11 @@ export const activities: LobbyActivity[] = [
     name: 'Photo Booth',
     detail: 'Make a tiny memory',
     tone: 'yellow',
+  },
+  {
+    id: 'minesweeper',
+    name: 'Minesweeper',
+    detail: 'Take turns, watch your step',
+    tone: 'green',
   },
 ];
