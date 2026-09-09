@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type SyntheticEvent } from 'react';
+import { useState, useSyncExternalStore, type SyntheticEvent } from 'react';
 import { ArcadeLobby } from '@/components/lobby/arcade-lobby';
 import { EntryScreen, type EntryMode } from '@/components/lobby/entry-screen';
 import { PixelStatus } from '@/components/pixel/pixel-status';
@@ -13,21 +13,44 @@ import { PatternRaceGame } from '@/components/games/pattern-race-game';
 import { MinesweeperGame } from '@/components/games/minesweeper-game';
 import { isAvatarId, type AvatarId } from '@/lib/protocol';
 
+const subscribeToLocalStorage = () => () => {};
+
+function getStoredDisplayName() {
+  return localStorage.getItem('same-page.display-name') ?? '';
+}
+
+function getStoredAvatar(): AvatarId {
+  const storedAvatar = localStorage.getItem('same-page.avatar');
+  return isAvatarId(storedAvatar) ? storedAvatar : 'avatar-1';
+}
+
+function getDefaultAvatar(): AvatarId {
+  return 'avatar-1';
+}
+
 export default function Home() {
   const [mode, setMode] = useState<EntryMode>('create');
-  const [displayName, setDisplayName] = useState(() =>
-    typeof window === 'undefined'
-      ? ''
-      : (localStorage.getItem('same-page.display-name') ?? ''),
+  const storedDisplayName = useSyncExternalStore(
+    subscribeToLocalStorage,
+    getStoredDisplayName,
+    () => '',
   );
+  const [displayNameOverride, setDisplayNameOverride] = useState<string | null>(
+    null,
+  );
+  const displayName = displayNameOverride ?? storedDisplayName;
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [password, setPassword] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState<AvatarId>(() => {
-    if (typeof window === 'undefined') return 'avatar-1';
-    const storedAvatar = localStorage.getItem('same-page.avatar');
-    return isAvatarId(storedAvatar) ? storedAvatar : 'avatar-1';
-  });
+  const storedAvatar = useSyncExternalStore(
+    subscribeToLocalStorage,
+    getStoredAvatar,
+    getDefaultAvatar,
+  );
+  const [selectedAvatarOverride, setSelectedAvatarOverride] =
+    useState<AvatarId | null>(null);
+  const selectedAvatar = selectedAvatarOverride ?? storedAvatar;
   const [copied, setCopied] = useState(false);
+
   const room = useRoomConnection();
   const camera = useEntryCamera(
     room.players.find((player) => player.id === room.selfId)
@@ -192,11 +215,11 @@ export default function Home() {
             roomCode={roomCodeInput}
             selectedAvatar={selectedAvatar}
             status={room.status}
-            onDisplayNameChange={setDisplayName}
+            onDisplayNameChange={setDisplayNameOverride}
             onModeChange={handleModeChange}
             onPasswordChange={setPassword}
             onRoomCodeChange={setRoomCodeInput}
-            onAvatarChange={setSelectedAvatar}
+            onAvatarChange={setSelectedAvatarOverride}
             onSubmit={handleSubmit}
           />
         )}
