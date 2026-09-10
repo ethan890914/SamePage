@@ -21,3 +21,12 @@ Show the resulting mine count, but do not expose mine-density percentages in dif
 ## Game typography
 
 Use the installed Pixelify Sans font for game counters and board numbers. In Minesweeper this includes the mine count, safe-tile count, and adjacent-mine numbers. Preserve readable number colors, square tiles, pixel borders, and visible keyboard focus. Use an explicit pixel font family or a CSS variable defined at runtime; do not rely on a Tailwind inline theme variable being emitted as a runtime custom property.
+
+Both interface languages share the same typography roles. Use `font-heading` or
+`--font-ui-pixel` for existing pixel headings and counters: Pixelify Sans handles
+Latin glyphs and Fusion Pixel 12px Proportional TC handles Traditional Chinese.
+Use `font-mono` or `--font-ui-mono` for labels, controls, and status text: Geist
+Mono handles Latin glyphs, with Noto Sans TC supplying full-width Chinese glyphs.
+Body copy uses `--font-ui-sans` (Geist Sans with Noto Sans TC). Do not apply a
+locale-wide font override. Define these runtime tokens on the body, where the
+Geist font variables are available.

@@ -6,18 +6,46 @@ import type {
   PatternRaceSettings,
   MinesweeperSettings,
 } from '@/lib/game-settings';
-import { Check, Copy, LogOut, X } from 'lucide-react';
+import { ArrowLeft, Check, Copy, LogOut, X } from 'lucide-react';
 import Image from 'next/image';
 import { PixelButton } from '@/components/pixel/pixel-button';
 import type { ActivityId, PlayerView } from '@/lib/protocol';
 import { activities } from './activities';
 
 const positions: Record<ActivityId, string> = {
-  minesweeper: 'station-minesweeper',
-  converge: 'station-converge',
-  'pattern-race': 'station-pattern',
+  minesweeper: 'station-arcade',
+  converge: 'station-arcade',
+  'pattern-race': 'station-arcade',
   'photo-booth': 'station-photo',
 };
+
+type LobbyArea = 'photo-booth' | 'arcade' | 'board-games';
+
+const lobbyAreas: {
+  id: LobbyArea;
+  name: string;
+  detail: string;
+  tone: 'pink' | 'cyan' | 'yellow';
+}[] = [
+  {
+    id: 'photo-booth',
+    name: 'Photo Booth',
+    detail: 'Make a tiny memory',
+    tone: 'pink',
+  },
+  {
+    id: 'arcade',
+    name: 'Arcade',
+    detail: 'Three games inside',
+    tone: 'cyan',
+  },
+  {
+    id: 'board-games',
+    name: 'Board Games',
+    detail: 'A cozy table for two',
+    tone: 'yellow',
+  },
+];
 
 const WALK_DURATION_MS = 760;
 
@@ -54,16 +82,20 @@ function PlayerSprite({
   isSelf,
   isWalking,
   slot,
+  localArea,
 }: {
   player: PlayerView;
   isSelf: boolean;
   isWalking: boolean;
   slot: number;
+  localArea?: LobbyArea | null;
 }) {
   const { t } = useLanguage();
-  const position = player.selectedActivity
-    ? positions[player.selectedActivity]
-    : `spawn-${slot}`;
+  const position = localArea
+    ? `station-${localArea}`
+    : player.selectedActivity
+      ? positions[player.selectedActivity]
+      : `spawn-${slot}`;
   return (
     <div
       className={`lobby-player lobby-player--${slot} ${position} ${isWalking ? 'is-walking' : ''} ${!player.connected ? 'is-offline' : ''}`}
@@ -118,6 +150,8 @@ export function ArcadeLobby({
   const [enteredActivityId, setEnteredActivityId] = useState<ActivityId | null>(
     null,
   );
+  const [area, setArea] = useState<LobbyArea | null>(null);
+  const [walkingArea, setWalkingArea] = useState<LobbyArea | null>(null);
   const startedActivity = activities.find(
     (activity) => activity.id === activeActivity,
   );
@@ -142,27 +176,54 @@ export function ArcadeLobby({
     return () => window.clearTimeout(timeout);
   }, [selectedActivity]);
 
+  function enterArea(nextArea: LobbyArea) {
+    setWalkingArea(nextArea);
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+    window.setTimeout(
+      () => {
+        setWalkingArea(null);
+        if (nextArea === 'photo-booth') {
+          setEnteredActivityId(null);
+          onSelectActivity('photo-booth');
+        } else {
+          setArea(nextArea);
+        }
+      },
+      reducedMotion ? 0 : WALK_DURATION_MS,
+    );
+  }
+
+  function leaveGameEntry() {
+    if (!selectedActivity) return;
+    onExitActivity(selectedActivity.id);
+    setEnteredActivityId(null);
+    setArea(selectedActivity.id === 'photo-booth' ? null : 'arcade');
+  }
+
   return (
     <section
       className="lobby-shell"
       aria-label={
-        selectedActivity || startedActivity
+        area
+          ? t('{0} menu', [t(area === 'arcade' ? 'Arcade' : 'Board Games')])
+          : selectedActivity || startedActivity
           ? t('{0} activity', [
               t((selectedActivity ?? startedActivity)?.name ?? ''),
             ])
           : undefined
       }
       aria-labelledby={
-        selectedActivity || startedActivity ? undefined : 'lobby-title'
+        selectedActivity || startedActivity || area ? undefined : 'lobby-title'
       }
     >
-      {!showActivityEntry && !startedActivity && (
+      {!showActivityEntry && !startedActivity && !area && (
         <header className="lobby-toolbar">
           <div>
             <p className="pixel-kicker">{t('Your shared place')}</p>
             <h1 id="lobby-title" className="font-heading text-xl sm:text-2xl">
-              {t('Room')}{' '}
-              {roomCode}
+              {t('Room')} {roomCode}
             </h1>
           </div>
           <div className="lobby-actions">
@@ -215,44 +276,103 @@ export function ArcadeLobby({
           minesweeperSettings={minesweeperSettings}
           onMinesweeperSettings={onMinesweeperSettings}
           onReady={(ready) => onSetReady(selectedActivity.id, ready)}
-          onExit={() => onExitActivity(selectedActivity.id)}
+          onExit={leaveGameEntry}
         />
+      ) : area ? (
+        <div className="area-menu">
+          <div className="area-menu-heading">
+            <PixelButton
+              type="button"
+              disabled={status !== 'connected'}
+              onClick={() => setArea(null)}
+            >
+              <ArrowLeft size={17} />
+              {t('Back to lobby')}
+            </PixelButton>
+            <div>
+              <p className="pixel-kicker">{t('Choose what to play')}</p>
+              <h1 className="font-heading">
+                {t(area === 'arcade' ? 'Arcade' : 'Board Games')}
+              </h1>
+            </div>
+          </div>
+          {area === 'arcade' ? (
+            <div className="area-menu-grid">
+              {activities
+                .filter((activity) => activity.id !== 'photo-booth')
+                .map((activity) => (
+                  <button
+                    className={`arcade-station area-menu-card arcade-station--${activity.tone}`}
+                    key={activity.id}
+                    type="button"
+                    aria-label={t('{0}: {1}', [
+                      t(activity.name),
+                      t(activity.detail),
+                    ])}
+                    disabled={status !== 'connected' || Boolean(activeActivity)}
+                    onClick={() => {
+                      setEnteredActivityId(null);
+                      onSelectActivity(activity.id);
+                    }}
+                  >
+                    <span className="station-screen" aria-hidden="true">
+                      <i />
+                    </span>
+                    <span className="station-copy">
+                      <strong>{t(activity.name)}</strong>
+                      <small>{t(activity.detail)}</small>
+                    </span>
+                  </button>
+                ))}
+            </div>
+          ) : (
+            <div className="area-menu-coming-soon pixel-panel">
+              <p className="pixel-kicker">{t('Coming soon')}</p>
+              <h2>{t('Board game nights are on the way.')}</h2>
+              <p>{t('Save a seat on the couch.')}</p>
+            </div>
+          )}
+        </div>
       ) : (
-        <div className="arcade-room" aria-label={t('Choose an activity spot')}>
+        <div className="arcade-room" aria-label={t('Choose an area')}>
           <Image
             className="arcade-room-art"
-            src="/images/cozy-home-lobby.png"
+            src="/images/cozy-area-lobby.png"
             alt=""
             width={1536}
             height={1024}
             priority
           />
           <div className="station-grid">
-            {activities.map((activity) => {
-              const count = players.filter(
-                (player) => player.selectedActivity === activity.id,
+            {lobbyAreas.map((lobbyArea) => {
+              const count = players.filter((player) =>
+                lobbyArea.id === 'photo-booth'
+                  ? player.selectedActivity === 'photo-booth'
+                  : lobbyArea.id === 'arcade'
+                    ? player.selectedActivity &&
+                      player.selectedActivity !== 'photo-booth'
+                    : false,
               ).length;
-              const selected = self?.selectedActivity === activity.id;
+              const selected = walkingArea === lobbyArea.id;
               return (
                 <button
-                  className={`arcade-station arcade-station--${activity.tone} ${selected ? 'is-selected' : ''}`}
-                  key={activity.id}
+                  className={`arcade-station area-station area-station--${lobbyArea.id} arcade-station--${lobbyArea.tone} ${selected ? 'is-selected' : ''}`}
+                  key={lobbyArea.id}
                   type="button"
-                  disabled={status !== 'connected' || Boolean(activeActivity)}
+                  disabled={
+                    status !== 'connected' ||
+                    Boolean(activeActivity) ||
+                    Boolean(walkingArea)
+                  }
                   aria-pressed={selected}
-                  onClick={() => {
-                    if (selectedActivity?.id !== activity.id) {
-                      setEnteredActivityId(null);
-                    }
-                    onSelectActivity(activity.id);
-                  }}
+                  onClick={() => enterArea(lobbyArea.id)}
                 >
                   <span className="station-screen" aria-hidden="true">
                     <i />
                   </span>
                   <span className="station-copy">
-                    <strong>{t(activity.name)}</strong>
-                    <small>{t(activity.detail)}</small>
+                    <strong>{t(lobbyArea.name)}</strong>
+                    <small>{t(lobbyArea.detail)}</small>
                   </span>
                   <span
                     className="station-count"
@@ -269,8 +389,11 @@ export function ArcadeLobby({
               key={player.id}
               player={player}
               isSelf={player.id === selfId}
-              isWalking={player.id === selfId && isWalking}
+              isWalking={
+                player.id === selfId && (isWalking || Boolean(walkingArea))
+              }
               slot={index}
+              localArea={player.id === selfId ? walkingArea : null}
             />
           ))}
           {players.length < 2 && (
@@ -282,9 +405,16 @@ export function ArcadeLobby({
             </div>
           )}
           <p className="arcade-hint" aria-live="polite">
-            {isWalking && selectedActivity
-              ? t('Walking to {0}…', [t(selectedActivity.name)])
-              : t('Choose a station to walk over')}
+            {walkingArea
+              ? t('Walking to {0}…', [
+                  t(
+                    lobbyAreas.find((lobbyArea) => lobbyArea.id === walkingArea)
+                      ?.name ?? '',
+                  ),
+                ])
+              : isWalking && selectedActivity
+                ? t('Walking to {0}…', [t(selectedActivity.name)])
+                : t('Choose an area to walk over')}
           </p>
 
           {startedActivity ? (

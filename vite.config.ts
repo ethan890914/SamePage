@@ -45,6 +45,10 @@ export default defineConfig(async () => {
   const { cloudflare } = await import('@cloudflare/vite-plugin');
 
   return {
+    // Font stylesheets must pass through Vite, not become Worker imports.
+    ssr: {
+      noExternal: [/^@fontsource\//, /^@fontsource-variable\//],
+    },
     css: { postcss: { plugins: [tailwindcss()] } },
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }

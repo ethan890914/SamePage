@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import '@fontsource/pixelify-sans/400.css';
 import '@fontsource/pixelify-sans/600.css';
 import '@fontsource/pixelify-sans/700.css';
+import '@fontsource/fusion-pixel-12px-proportional-tc/400.css';
+import '@fontsource-variable/noto-sans-tc';
 import './globals.css';
 
 const geistSans = Geist({

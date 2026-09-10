@@ -166,7 +166,15 @@ export const commonTraditionalChineseWords = [
 
 /** English source text is the key; player names, answers and room codes never pass through this dictionary. */
 export const interfaceTraditionalChinese: Record<string, string> = {
-  'First to {0} points': '搶先獲得 {0} 分', '{0} letters': '{0} 個字母', 'Skip requested · waiting for partner': '已要求跳題 · 等待對方同意', 'Skip ({0}/2)': '跳題（{0}/2）', 'Both players must agree to skip. No points are awarded.': '雙方都同意才能跳題，跳題不計分。', 'Problem skipped': '已跳過這題', 'Next problem in {0}…': '{0} 秒後進入下一題…', 'Player': '玩家',
+  'First to {0} points': '搶先獲得 {0} 分',
+  '{0} letters': '{0} 個字母',
+  'Skip requested · waiting for partner': '已要求跳題 · 等待對方同意',
+  'Skip ({0}/2)': '跳題（{0}/2）',
+  'Both players must agree to skip. No points are awarded.':
+    '雙方都同意才能跳題，跳題不計分。',
+  'Problem skipped': '已跳過這題',
+  'Next problem in {0}…': '{0} 秒後進入下一題…',
+  Player: '玩家',
   'Waiting for camera': '等待攝影機',
   'Could not assemble your strip. Retake the photos and try again.':
     '無法組合拍貼，請重拍後再試。',
@@ -215,7 +223,7 @@ export const interfaceTraditionalChinese: Record<string, string> = {
   Classic: '經典',
   Midnight: '午夜',
   Sweethearts: '甜蜜愛心',
-  Arcade: '遊戲室',
+  Arcade: '遊戲機區',
   'YOU + ME': '你 + 我',
   'Download shared strip': '下載共用背景拍貼',
   'Download original': '下載原始拍貼',
@@ -309,9 +317,9 @@ export const interfaceTraditionalChinese: Record<string, string> = {
   Connecting: '連線中',
   'Arcade online': '遊戲室已上線',
   'A private arcade for two': '專屬兩人的遊戲室',
-  'Different locations,': '身在不同的地方，',
-  'Different time zones,': '生活在不同的時區，',
-  'But now on the Same Page.': '此刻，我們心在一起。',
+  'Different locations,': '不同地方，',
+  'Different time zones,': '不同時區，',
+  'But now on the Same Page.': '此刻，在一起。',
   'Open a room during your call, share the code, and meet your person inside.':
     '通話時開個房間，分享代碼，就能和對方在這裡相聚。',
   CONVERGE: '心有靈犀',
@@ -349,8 +357,18 @@ export const interfaceTraditionalChinese: Record<string, string> = {
   'Connection lost. Holding your place…': '連線中斷，正在為你保留位置…',
   'Dismiss error': '關閉錯誤訊息',
   'Choose an activity spot': '選擇遊戲區',
+  'Choose an area': '選擇一個區域',
+  'Board Games': '桌遊區',
+  'Three games inside': '裡面有三款遊戲',
+  'A cozy table for two': '兩人的溫馨桌遊角落',
+  'Choose what to play': '選擇想玩的遊戲',
+  '{0} menu': '{0}選單',
+  'Coming soon': '即將推出',
+  'Board game nights are on the way.': '桌遊之夜即將登場。',
+  'Save a seat on the couch.': '沙發上幫你留了位子。',
   'Waiting for player two': '等待第二位玩家',
   'Choose a station to walk over': '選擇想去的遊戲區',
+  'Choose an area to walk over': '選擇想去的區域',
   'Round in progress': '回合進行中',
   'Both ready!': '雙方都準備好了！',
   'Waiting for both of you to reconnect to the booth…':
