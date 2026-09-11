@@ -13,8 +13,9 @@ const { d1, r2 } = hostingConfig;
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
 
 const localBindingConfig = {
-  main: 'vinext/server/fetch-handler',
+  main: 'worker/frontend.ts',
   compatibility_flags: ['nodejs_compat'],
+  services: [{ binding: 'REALTIME', service: 'same-page-realtime' }],
   d1_databases: d1
     ? [
         {
