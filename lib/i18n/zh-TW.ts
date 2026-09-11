@@ -406,6 +406,7 @@ export const interfaceTraditionalChinese: Record<string, string> = {
   'Your game setup is ready. Gameplay is coming next.':
     '遊戲設定已就緒，即將開始。',
   'Back to lobby': '返回大廳',
+  'Back to menu': '返回選單',
   'Back to arcade': '返回遊戲大廳',
   'Find the same word': '一起想到同一個詞',
   'Think fast, type faster': '動腦快，打字更快',

@@ -58,7 +58,7 @@ export function ActivityEntry({
           disabled={exitDisabled}
         >
           <ArrowLeft size={16} />
-          {t('Back to lobby')}
+          {variant === 'photo-booth' ? t('Back to lobby') : t('Back to menu')}
         </PixelButton>
         {actions}
       </footer>
