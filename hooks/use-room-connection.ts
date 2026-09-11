@@ -435,6 +435,7 @@ export function useRoomConnection() {
       try {
         const response = await fetch(apiUrl('/api/rooms'), {
           method: 'POST',
+          credentials: 'include',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(payload),
         });

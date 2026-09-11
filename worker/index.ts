@@ -46,6 +46,7 @@ function addCors(response: Response, request: Request, env: Env) {
   if (!origin || !allowedOrigins(env).includes(origin)) return response;
   const headers = new Headers(response.headers);
   headers.set('access-control-allow-origin', origin);
+  headers.set('access-control-allow-credentials', 'true');
   headers.set('access-control-allow-methods', 'POST, OPTIONS');
   headers.set('access-control-allow-headers', 'content-type');
   headers.set('vary', 'Origin');
