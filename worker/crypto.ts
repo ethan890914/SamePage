@@ -1,5 +1,6 @@
 const encoder = new TextEncoder();
-const PBKDF2_ITERATIONS = 150_000;
+// Cloudflare Workers Web Crypto supports PBKDF2 iteration counts up to 100,000.
+const PBKDF2_ITERATIONS = 100_000;
 
 function toBase64(bytes: Uint8Array) {
   let binary = '';

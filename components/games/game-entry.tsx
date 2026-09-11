@@ -122,8 +122,8 @@ export function GameEntry({
             : !cameraReady
               ? t('Enable camera')
               : self?.ready
-                ? t('Ready')
-                : t('Not ready')
+                ? copy.cancelReady
+                : copy.ready
           : self?.ready
             ? copy.cancelReady
             : copy.ready}

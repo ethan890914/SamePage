@@ -439,6 +439,14 @@ export function useRoomConnection() {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(payload),
         });
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.includes('application/json')) {
+          throw new Error(
+            response.ok
+              ? 'The room service returned an unexpected response.'
+              : `The room service failed (${response.status}).`,
+          );
+        }
         const result = (await response.json()) as {
           roomCode?: string;
           error?: { message?: string };
