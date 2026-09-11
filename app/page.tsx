@@ -12,6 +12,7 @@ import { useEntryCamera } from '@/hooks/use-entry-camera';
 import { ConvergeGame } from '@/components/games/converge-game';
 import { PatternRaceGame } from '@/components/games/pattern-race-game';
 import { MinesweeperGame } from '@/components/games/minesweeper-game';
+import { ColorPickerGame } from '@/components/games/color-picker-game';
 import { isAvatarId, type AvatarId } from '@/lib/protocol';
 import { LanguageProvider } from '@/lib/i18n/provider';
 import { SettingStepper } from '@/components/pixel/setting-stepper';
@@ -150,6 +151,8 @@ function HomeContent() {
               send={room.sendConverge}
               onExit={() => room.exitActivity('converge')}
             />
+          ) : room.activeActivity === 'color-picker' && room.activityInstanceId ? (
+            <ColorPickerGame key={room.activityInstanceId} instanceId={room.activityInstanceId} players={room.players} selfId={room.selfId} state={room.colorPickerState} status={room.status} send={room.sendColorPicker} onExit={() => room.exitActivity('color-picker')} />
           ) : room.activeActivity === 'pattern-race' &&
             room.activityInstanceId ? (
             <PatternRaceGame
@@ -212,6 +215,8 @@ function HomeContent() {
               onBoothCountdown={room.updateBoothCountdown}
               convergeSettings={room.convergeSettings}
               onConvergeSettings={room.updateConvergeSettings}
+              colorPickerSettings={room.colorPickerSettings}
+              onColorPickerSettings={room.updateColorPickerSettings}
               patternRaceSettings={room.patternRaceSettings}
               onPatternRaceSettings={room.updatePatternRaceSettings}
               minesweeperSettings={room.minesweeperSettings}

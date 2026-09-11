@@ -8,7 +8,10 @@ import {
   type MinesweeperSettings,
   type ConvergeSettings,
   type PatternRaceSettings,
+  DEFAULT_COLOR_PICKER_SETTINGS,
+  type ColorPickerSettings,
 } from '@/lib/game-settings';
+import type { ColorPickerCommand, ColorPickerPublicState } from '@/lib/color-picker';
 import type { BoothCommand } from '@/lib/photo-booth';
 import type {
   MinesweeperCommand,
@@ -124,6 +127,8 @@ export function useRoomConnection() {
     useState<MinesweeperSettings>(DEFAULT_MINESWEEPER_SETTINGS);
   const [minesweeperState, setMinesweeperState] =
     useState<MinesweeperPublicState | null>(null);
+  const [colorPickerSettings, setColorPickerSettings] = useState<ColorPickerSettings>(DEFAULT_COLOR_PICKER_SETTINGS);
+  const [colorPickerState, setColorPickerState] = useState<ColorPickerPublicState | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [selfId, setSelfId] = useState<string | null>(null);
@@ -214,6 +219,10 @@ export function useRoomConnection() {
         }
         if (message.type === 'converge_state') {
           setConvergeState(message.state);
+          return;
+        }
+        if (message.type === 'color_picker_state') {
+          setColorPickerState(message.state);
           return;
         }
         if (message.type === 'minesweeper_state') {
@@ -311,8 +320,10 @@ export function useRoomConnection() {
           setMinesweeperSettings(
             message.minesweeperSettings ?? DEFAULT_MINESWEEPER_SETTINGS,
           );
+          setColorPickerSettings(message.colorPickerSettings ?? DEFAULT_COLOR_PICKER_SETTINGS);
           if (message.activeActivity !== 'minesweeper')
             setMinesweeperState(null);
+          if (message.activeActivity !== 'color-picker') setColorPickerState(null);
           setActiveActivity(message.activeActivity);
           setActivityInstanceId(message.activityInstanceId ?? null);
           if (message.activeActivity !== 'converge') setConvergeState(null);
@@ -519,6 +530,7 @@ export function useRoomConnection() {
     setConvergeState(null);
     setPatternRaceState(null);
     setMinesweeperState(null);
+    setColorPickerState(null);
     setPatternRaceGuessError(null);
     setError(null);
     setStatus('idle');
@@ -527,6 +539,11 @@ export function useRoomConnection() {
   const sendActivityCommand = useCallback(
     (
       command:
+        | {
+            type: 'set_color_picker_settings';
+            activityId: 'color-picker';
+            settings: ColorPickerSettings;
+          }
         | {
             type: 'set_minesweeper_settings';
             activityId: 'minesweeper';
@@ -637,8 +654,16 @@ export function useRoomConnection() {
     },
     [],
   );
+  const sendColorPicker = useCallback((instanceId: string, command: ColorPickerCommand) => {
+    if (socketRef.current?.readyState !== WebSocket.OPEN) return;
+    socketRef.current.send(JSON.stringify({ type: 'color_picker_command', protocolVersion: PROTOCOL_VERSION, requestId: requestId(), instanceId, command } satisfies ClientMessage));
+  }, []);
 
   return {
+    colorPickerSettings,
+    colorPickerState,
+    sendColorPicker,
+    updateColorPickerSettings: (settings: ColorPickerSettings) => sendActivityCommand({ type: 'set_color_picker_settings', activityId: 'color-picker', settings }),
     minesweeperSettings,
     minesweeperState,
     sendMinesweeper,

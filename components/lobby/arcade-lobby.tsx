@@ -5,6 +5,7 @@ import type {
   ConvergeSettings,
   PatternRaceSettings,
   MinesweeperSettings,
+  ColorPickerSettings,
 } from '@/lib/game-settings';
 import { ArrowLeft, Check, Copy, LogOut, X } from 'lucide-react';
 import Image from 'next/image';
@@ -13,6 +14,7 @@ import type { ActivityId, PlayerView } from '@/lib/protocol';
 import { activities } from './activities';
 
 const positions: Record<ActivityId, string> = {
+  'color-picker': 'station-arcade',
   minesweeper: 'station-arcade',
   converge: 'station-arcade',
   'pattern-race': 'station-arcade',
@@ -36,7 +38,7 @@ const lobbyAreas: {
   {
     id: 'arcade',
     name: 'Arcade',
-    detail: 'Three games inside',
+    detail: 'Four games inside',
     tone: 'cyan',
   },
   {
@@ -58,6 +60,8 @@ type Props = {
   onBoothCountdown: (seconds: number) => void;
   convergeSettings: ConvergeSettings;
   onConvergeSettings: (settings: ConvergeSettings) => void;
+  colorPickerSettings: ColorPickerSettings;
+  onColorPickerSettings: (settings: ColorPickerSettings) => void;
   patternRaceSettings: PatternRaceSettings;
   minesweeperSettings: MinesweeperSettings;
   onMinesweeperSettings: (settings: MinesweeperSettings) => void;
@@ -124,6 +128,8 @@ export function ArcadeLobby({
   onBoothCountdown,
   convergeSettings,
   onConvergeSettings,
+  colorPickerSettings,
+  onColorPickerSettings,
   patternRaceSettings,
   onPatternRaceSettings,
   minesweeperSettings,
@@ -271,6 +277,8 @@ export function ArcadeLobby({
           status={status}
           settings={convergeSettings}
           onSettings={onConvergeSettings}
+          colorPickerSettings={colorPickerSettings}
+          onColorPickerSettings={onColorPickerSettings}
           patternRaceSettings={patternRaceSettings}
           onPatternRaceSettings={onPatternRaceSettings}
           minesweeperSettings={minesweeperSettings}

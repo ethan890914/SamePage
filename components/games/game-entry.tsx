@@ -11,6 +11,7 @@ import type {
   ConvergeSettings,
   PatternRaceSettings,
   MinesweeperSettings,
+  ColorPickerSettings,
 } from '@/lib/game-settings';
 import { gameEntryEnglish } from '@/lib/i18n/game-entry';
 import { gameEntryTraditionalChinese } from '@/lib/i18n/zh-TW';
@@ -26,6 +27,8 @@ export function GameEntry({
   onPatternRaceSettings,
   minesweeperSettings,
   onMinesweeperSettings,
+  colorPickerSettings,
+  onColorPickerSettings,
   onReady,
   onExit,
   camera,
@@ -35,7 +38,7 @@ export function GameEntry({
   countdownSeconds = 10,
   onCountdown,
 }: {
-  activityId: 'converge' | 'pattern-race' | 'photo-booth' | 'minesweeper';
+  activityId: 'converge' | 'pattern-race' | 'photo-booth' | 'minesweeper' | 'color-picker';
   camera?: ReactNode;
   cameraReady?: boolean;
   cameraBusy?: boolean;
@@ -51,6 +54,8 @@ export function GameEntry({
   onPatternRaceSettings: (settings: PatternRaceSettings) => void;
   minesweeperSettings: MinesweeperSettings;
   onMinesweeperSettings: (settings: MinesweeperSettings) => void;
+  colorPickerSettings: ColorPickerSettings;
+  onColorPickerSettings: (settings: ColorPickerSettings) => void;
   onReady: (ready: boolean) => void;
   onExit: () => void;
 }) {
@@ -87,6 +92,8 @@ export function GameEntry({
               ),
             ],
           }
+      : activityId === 'color-picker'
+        ? { description: t('Remember the color. Rebuild it from memory.'), rules: [t('Study the target color before it disappears.'), t('Use the hue strip and color board to recreate it, then lock in your guess.'), t('When time runs out, your current color locks automatically. Every round starts at white.'), t('The closest color scores higher. Highest total after all rounds wins.')] }
         : copy.games[activityId];
   const self = players.find((player) => player.id === selfId);
   const connected = status === 'connected';
@@ -140,6 +147,8 @@ export function GameEntry({
             ? t('Minesweeper')
             : activityId === 'photo-booth'
               ? t('Photo Booth')
+              : activityId === 'color-picker'
+                ? t('Color Picker')
               : t('Pattern Race')
       }
       subtitle={game.description}
@@ -203,7 +212,17 @@ export function GameEntry({
         </ol>
       </PixelPanel>
       <PixelPanel title={copy.settings}>
-        {activityId === 'minesweeper' ? (
+        {activityId === 'color-picker' ? (
+          <fieldset disabled={!connected || Boolean(self?.ready)} className="game-entry-settings">
+            <legend className="sr-only">{copy.settings}</legend>
+            <span className="game-setting-label">{t('Rounds')}</span>
+            <SettingStepper label={t('Rounds')} options={[3, 5, 7, 10]} value={colorPickerSettings.rounds} format={(value) => t('{0} rounds', [value])} onChange={(rounds) => onColorPickerSettings({ ...colorPickerSettings, rounds })} />
+            <span className="game-setting-label">{t('Memorize time')}</span>
+            <SettingStepper label={t('Memorize time')} options={[3, 4, 5]} value={colorPickerSettings.memorizeSeconds} format={(value) => t('{0} sec', [value])} onChange={(memorizeSeconds) => onColorPickerSettings({ ...colorPickerSettings, memorizeSeconds })} />
+            <span className="game-setting-label">{t('Pick time')}</span>
+            <SettingStepper label={t('Pick time')} options={[15, 20, 30]} value={colorPickerSettings.pickSeconds} format={(value) => t('{0} sec', [value])} onChange={(pickSeconds) => onColorPickerSettings({ ...colorPickerSettings, pickSeconds })} />
+          </fieldset>
+        ) : activityId === 'minesweeper' ? (
           <MinesweeperSettingsFields
             key={`${minesweeperSettings.rows}x${minesweeperSettings.columns}`}
             settings={minesweeperSettings}

@@ -3,7 +3,10 @@ import {
   DEFAULT_PATTERN_RACE_SETTINGS,
   isPatternRaceSettings,
   DEFAULT_MINESWEEPER_SETTINGS,
+  DEFAULT_COLOR_PICKER_SETTINGS,
+  isColorPickerSettings,
 } from '../lib/game-settings';
+import { colorScore, publicColorPickerState, randomTarget, type ColorPickerState } from '../lib/color-picker';
 import {
   convergeWordsMatch,
   publicConvergeState,
@@ -100,6 +103,7 @@ export class ArcadeRoom extends DurableObject<Env> {
           delete room.converge;
           delete room.patternRace;
           delete room.minesweeper;
+          delete room.colorPicker;
         }
         room.revision += 1;
         await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
@@ -122,6 +126,11 @@ export class ArcadeRoom extends DurableObject<Env> {
         this.expireConvergeRound(room, now);
         await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
         this.broadcastConvergeState(room);
+      }
+      if (room.colorPicker?.deadline != null && room.colorPicker.deadline <= now) {
+        this.advanceColorPicker(room, now);
+        await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+        this.broadcastColorPickerState(room);
       }
       if (
         room.patternRace?.deadline != null &&
@@ -270,6 +279,10 @@ export class ArcadeRoom extends DurableObject<Env> {
       await this.handleConvergeCommand(ws, attachment, parsed.data);
       return;
     }
+    if (parsed.data.type === 'color_picker_command') {
+      await this.handleColorPickerCommand(ws, attachment, parsed.data);
+      return;
+    }
 
     if (parsed.data.type === 'minesweeper_command') {
       await this.handleMinesweeperCommand(ws, attachment, parsed.data);
@@ -283,6 +296,7 @@ export class ArcadeRoom extends DurableObject<Env> {
 
     if (
       parsed.data.type === 'set_game_settings' ||
+      parsed.data.type === 'set_color_picker_settings' ||
       parsed.data.type === 'set_pattern_race_settings' ||
       parsed.data.type === 'set_minesweeper_settings' ||
       parsed.data.type === 'set_booth_settings' ||
@@ -575,6 +589,7 @@ export class ArcadeRoom extends DurableObject<Env> {
     if (room.converge) this.broadcastConvergeState(room);
     if (room.patternRace) this.broadcastPatternRaceState(room);
     if (room.minesweeper) this.broadcastMinesweeperState(room);
+    if (room.colorPicker) this.broadcastColorPickerState(room);
   }
 
   private async markDisconnected(ws: WebSocket) {
@@ -622,6 +637,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       this.broadcastSnapshot(room);
       if (room.converge) this.broadcastConvergeState(room);
       if (room.patternRace) this.broadcastPatternRaceState(room);
+      if (room.colorPicker) this.broadcastColorPickerState(room);
     });
   }
 
@@ -682,7 +698,8 @@ export class ArcadeRoom extends DurableObject<Env> {
           | 'set_game_settings'
           | 'set_pattern_race_settings'
           | 'set_minesweeper_settings'
-          | 'set_booth_settings';
+          | 'set_booth_settings'
+          | 'set_color_picker_settings';
       }
     >,
   ) {
@@ -762,6 +779,13 @@ export class ArcadeRoom extends DurableObject<Env> {
           if (candidate.selectedActivity === command.activityId)
             candidate.ready = false;
         }
+      } else if (command.type === 'set_color_picker_settings') {
+        if (player.selectedActivity !== 'color-picker') {
+          this.sendCommandRejected(ws, command.requestId, 'not_in_activity');
+          return;
+        }
+        room.colorPickerSettings = command.settings;
+        for (const candidate of room.players) if (candidate.selectedActivity === 'color-picker') candidate.ready = false;
       } else if (command.type === 'set_pattern_race_settings') {
         if (player.selectedActivity !== 'pattern-race') {
           this.sendCommandRejected(ws, command.requestId, 'not_in_activity');
@@ -814,6 +838,7 @@ export class ArcadeRoom extends DurableObject<Env> {
         delete room.converge;
         delete room.patternRace;
         delete room.minesweeper;
+        delete room.colorPicker;
       }
 
       room.revision += 1;
@@ -849,6 +874,9 @@ export class ArcadeRoom extends DurableObject<Env> {
             room.players.map((candidate) => candidate.id),
           );
         }
+        if (command.activityId === 'color-picker') {
+          room.colorPicker = this.newColorPickerState(room.activeActivityInstanceId, room.colorPickerSettings ?? DEFAULT_COLOR_PICKER_SETTINGS, room.players.map((candidate) => candidate.id));
+        }
         started = true;
       }
       await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
@@ -865,6 +893,7 @@ export class ArcadeRoom extends DurableObject<Env> {
         });
         if (command.activityId === 'converge')
           this.broadcastConvergeState(room);
+        if (command.activityId === 'color-picker') this.broadcastColorPickerState(room);
         else if (command.activityId === 'pattern-race')
           this.broadcastPatternRaceState(room);
         else if (command.activityId === 'minesweeper')
@@ -885,6 +914,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       deadlines.push(room.patternRace.deadline);
     if (room.patternRace?.nextProblemAt != null)
       deadlines.push(room.patternRace.nextProblemAt);
+    if (room.colorPicker?.deadline != null) deadlines.push(room.colorPicker.deadline);
     if (deadlines.length === 0) {
       await this.ctx.storage.deleteAlarm();
       return;
@@ -909,6 +939,7 @@ export class ArcadeRoom extends DurableObject<Env> {
       convergeSettings: room.convergeSettings ?? DEFAULT_CONVERGE_SETTINGS,
       minesweeperSettings:
         room.minesweeperSettings ?? DEFAULT_MINESWEEPER_SETTINGS,
+      colorPickerSettings: isColorPickerSettings(room.colorPickerSettings) ? room.colorPickerSettings : DEFAULT_COLOR_PICKER_SETTINGS,
       patternRaceSettings: isPatternRaceSettings(room.patternRaceSettings)
         ? room.patternRaceSettings
         : DEFAULT_PATTERN_RACE_SETTINGS,
@@ -1583,6 +1614,117 @@ export class ArcadeRoom extends DurableObject<Env> {
     for (const socket of this.ctx.getWebSockets()) {
       if (this.getAttachment(socket)?.authenticated) this.send(socket, message);
     }
+  }
+
+  private newColorPickerState(
+    instanceId: string,
+    settings: NonNullable<StoredRoom['colorPickerSettings']>,
+    playerIds: string[],
+  ): ColorPickerState {
+    return {
+      instanceId,
+      settings,
+      playerIds,
+      phase: 'memorize',
+      round: 1,
+      target: randomTarget(),
+      deadline: Date.now() + settings.memorizeSeconds * 1000,
+      guesses: {},
+      drafts: Object.fromEntries(playerIds.map((id) => [id, { r: 255, g: 255, b: 255 }])),
+      totals: Object.fromEntries(playerIds.map((id) => [id, 0])),
+      history: [],
+      readyIds: [],
+    };
+  }
+
+  private finishColorPickerRound(state: ColorPickerState) {
+    for (const id of state.playerIds) state.guesses[id] ??= state.drafts[id] ?? { r: 255, g: 255, b: 255 };
+    const scores = Object.fromEntries(state.playerIds.map((id) => [id, colorScore(state.target, state.guesses[id])]));
+    for (const id of state.playerIds) state.totals[id] = Math.round(((state.totals[id] ?? 0) + scores[id]) * 10) / 10;
+    const [left, right] = state.playerIds;
+    const winnerId = scores[left] === scores[right] ? null : scores[left] > scores[right] ? left : right;
+    state.history.push({ round: state.round, target: state.target, guesses: { ...state.guesses }, scores, winnerId });
+    state.phase = state.round >= state.settings.rounds ? 'finished' : 'reveal';
+    state.deadline = state.phase === 'reveal' ? Date.now() + 5000 : null;
+    state.readyIds = [];
+  }
+
+  private advanceColorPicker(room: StoredRoom, now: number) {
+    const state = room.colorPicker;
+    if (!state) return;
+    if (state.phase === 'memorize') {
+      state.phase = 'pick';
+      state.deadline = now + state.settings.pickSeconds * 1000;
+    } else if (state.phase === 'pick') this.finishColorPickerRound(state);
+    else if (state.phase === 'reveal') {
+      state.round += 1;
+      state.phase = 'memorize';
+      state.target = randomTarget();
+      state.guesses = {};
+      state.drafts = Object.fromEntries(state.playerIds.map((id) => [id, { r: 255, g: 255, b: 255 }]));
+      state.readyIds = [];
+      state.deadline = now + state.settings.memorizeSeconds * 1000;
+    }
+  }
+
+  private broadcastColorPickerState(room: StoredRoom, requestId = crypto.randomUUID()) {
+    if (!room.colorPicker) return;
+    this.broadcast({ type: 'color_picker_state', protocolVersion: PROTOCOL_VERSION, requestId, serverTime: Date.now(), state: publicColorPickerState(room.colorPicker) });
+  }
+
+  private async handleColorPickerCommand(
+    ws: WebSocket,
+    attachment: SocketAttachment,
+    message: Extract<ClientMessage, { type: 'color_picker_command' }>,
+  ) {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const room = await this.ctx.storage.get<StoredRoom>(ROOM_STORAGE_KEY);
+      const state = room?.colorPicker;
+      const player = room?.players.find((candidate) => candidate.id === attachment.playerId);
+      if (!room || !state || !player || room.activeActivity !== 'color-picker' || message.instanceId !== state.instanceId) {
+        this.sendCommandRejected(ws, message.requestId, 'not_in_activity');
+        return;
+      }
+      if (message.command.kind === 'sync') {
+        this.send(ws, { type: 'color_picker_state', protocolVersion: PROTOCOL_VERSION, requestId: message.requestId, serverTime: Date.now(), state: publicColorPickerState(state) });
+        return;
+      }
+      if (message.command.kind === 'return_to_setup') {
+        for (const candidate of room.players) candidate.ready = false;
+        room.colorPickerSettings = state.settings;
+        delete room.colorPicker;
+        room.activeActivity = null;
+        room.activeActivityInstanceId = null;
+        room.revision += 1;
+      } else if (message.command.kind === 'submit' || message.command.kind === 'preview') {
+        if (state.phase !== 'pick') return this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+        if (message.command.round !== state.round) return this.sendCommandRejected(ws, message.requestId, 'stale_round');
+        if (state.guesses[player.id]) return this.sendCommandRejected(ws, message.requestId, 'already_submitted');
+        state.drafts[player.id] = message.command.color;
+        if (message.command.kind === 'preview') {
+          await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+          return;
+        }
+        state.guesses[player.id] = message.command.color;
+        if (state.playerIds.every((id) => state.guesses[id])) this.finishColorPickerRound(state);
+      } else {
+        if (state.phase !== 'reveal') return this.sendCommandRejected(ws, message.requestId, 'game_not_playing');
+        if (!state.readyIds.includes(player.id)) state.readyIds.push(player.id);
+        if (state.playerIds.every((id) => state.readyIds.includes(id))) {
+          state.round += 1;
+          state.phase = 'memorize';
+          state.target = randomTarget();
+          state.guesses = {};
+          state.drafts = Object.fromEntries(state.playerIds.map((id) => [id, { r: 255, g: 255, b: 255 }]));
+          state.readyIds = [];
+          state.deadline = Date.now() + state.settings.memorizeSeconds * 1000;
+        }
+      }
+      await this.ctx.storage.put(ROOM_STORAGE_KEY, room);
+      await this.scheduleNextAlarm(room);
+      this.broadcastSnapshot(room);
+      this.broadcastColorPickerState(room, message.requestId);
+    });
   }
 
   private sendCommandRejected(

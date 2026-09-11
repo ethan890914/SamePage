@@ -55,6 +55,31 @@ export type PatternRaceSettings = {
   wordLengthMode: 'limited' | 'unlimited';
 };
 
+export type ColorPickerSettings = {
+  rounds: number;
+  memorizeSeconds: number;
+  pickSeconds: number;
+};
+
+export const DEFAULT_COLOR_PICKER_SETTINGS: ColorPickerSettings = {
+  rounds: 5,
+  memorizeSeconds: 4,
+  pickSeconds: 20,
+};
+
+export function isColorPickerSettings(
+  value: unknown,
+): value is ColorPickerSettings {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const settings = value as Record<string, unknown>;
+  return (
+    Object.keys(settings).length === 3 &&
+    [3, 5, 7, 10].includes(settings.rounds as number) &&
+    [3, 4, 5].includes(settings.memorizeSeconds as number) &&
+    [15, 20, 30].includes(settings.pickSeconds as number)
+  );
+}
+
 export const DEFAULT_CONVERGE_SETTINGS: ConvergeSettings = {
   timeLimitSeconds: 10,
   mode: 'unlimited',

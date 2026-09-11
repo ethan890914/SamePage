@@ -8,6 +8,7 @@ export type LobbyActivity = {
 };
 
 export const activities: LobbyActivity[] = [
+  { id: 'color-picker', name: 'Color Picker', detail: 'Remember and match the color', tone: 'yellow' },
   {
     id: 'converge',
     name: 'Converge',

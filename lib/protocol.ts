@@ -5,7 +5,10 @@ import {
   type MinesweeperSettings,
   type ConvergeSettings,
   type PatternRaceSettings,
+  type ColorPickerSettings,
+  isColorPickerSettings,
 } from './game-settings';
+import { isColorPickerCommand, type ColorPickerCommand, type ColorPickerPublicState } from './color-picker';
 import {
   isConvergeCommand,
   type ConvergeCommand,
@@ -34,6 +37,7 @@ export const activityIds = [
   'pattern-race',
   'photo-booth',
   'minesweeper',
+  'color-picker',
 ] as const;
 export type ActivityId = (typeof activityIds)[number];
 
@@ -86,6 +90,8 @@ export type CreateRoomError = {
 };
 
 export type ClientMessage =
+  | { type: 'color_picker_command'; protocolVersion: typeof PROTOCOL_VERSION; requestId: string; instanceId: string; command: ColorPickerCommand }
+  | { type: 'set_color_picker_settings'; protocolVersion: typeof PROTOCOL_VERSION; requestId: string; activityId: 'color-picker'; settings: ColorPickerSettings }
   | {
       type: 'minesweeper_command';
       protocolVersion: typeof PROTOCOL_VERSION;
@@ -198,6 +204,7 @@ type ServerEnvelope = {
 };
 
 export type ServerMessage =
+  | (ServerEnvelope & { type: 'color_picker_state'; requestId: string; state: ColorPickerPublicState })
   | (ServerEnvelope & {
       type: 'minesweeper_state';
       requestId: string;
@@ -259,6 +266,7 @@ export type ServerMessage =
       convergeSettings?: ConvergeSettings;
       patternRaceSettings?: PatternRaceSettings;
       minesweeperSettings?: MinesweeperSettings;
+      colorPickerSettings?: ColorPickerSettings;
       boothCountdownSeconds?: number;
       roomCode: string;
       revision: number;
@@ -396,6 +404,14 @@ export function parseClientMessage(raw: string): ParseResult<ClientMessage> {
     return { success: false, error: 'invalid_message' };
 
   switch (value.type) {
+    case 'color_picker_command':
+      if (hasOnlyKeys(value, ['type', 'protocolVersion', 'requestId', 'instanceId', 'command']) && typeof value.instanceId === 'string' && value.instanceId.length <= 80 && isColorPickerCommand(value.command))
+        return { success: true, data: value as ClientMessage };
+      break;
+    case 'set_color_picker_settings':
+      if (hasOnlyKeys(value, ['type', 'protocolVersion', 'requestId', 'activityId', 'settings']) && value.activityId === 'color-picker' && isColorPickerSettings(value.settings))
+        return { success: true, data: value as ClientMessage };
+      break;
     case 'minesweeper_command':
       if (
         hasOnlyKeys(value, [
