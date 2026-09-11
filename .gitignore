@@ -90,3 +90,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 next-env.d.ts
 .DS_Store
+
+# Private deployment notes (may contain personal domains and setup details)
+DEPLOYMENT.md

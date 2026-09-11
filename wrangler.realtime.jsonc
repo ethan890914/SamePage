@@ -1,4 +1,7 @@
 {
+  "vars": {
+  "ALLOWED_ORIGINS": "https://same-page.ethan516858.workers.dev"
+  },
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "same-page-realtime",
   "main": "worker/index.ts",

@@ -103,7 +103,7 @@ function HomeContent() {
         ? t('Reconnecting')
         : busy
           ? t('Connecting')
-          : t('Arcade online');
+          : t('Connected');
 
   return (
     <main

@@ -62,8 +62,8 @@ export function EntryScreen(props: Props) {
           </p>
         </div>
         <div className="entry-marquee" aria-hidden="true">
-          <span>{t('CONVERGE')}</span>
-          <span>{t('PATTERN RACE')}</span>
+          <span>{t('ARCADE')}</span>
+          <span>{t('BOARD GAMES')}</span>
           <span>{t('PHOTO BOOTH')}</span>
         </div>
       </div>
